@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>书籍预览 · Library</title>
+<title>书籍预览 2.0 · Library</title>
 <style>
   :root {
     /* 炭灰 + 单点橙（参考图），叠苹果的干净 */
@@ -23,11 +23,17 @@
     --radius-m: 14px;
     --radius-l: 20px;
     --ease: cubic-bezier(.28,.11,.32,1);
-    --blur: saturate(160%) blur(22px);
+    /* 去掉 saturate()、收窄模糊半径：sticky 顶栏是全宽 backdrop-blur，
+       滚动时每帧都要重采样背后整条内容，是仅次于逐卡 getBoundingClientRect 的卡顿源。 */
+    --blur: blur(16px);
     /* 编辑排版：衬线标题 + 无衬线正文 */
     --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, "Times New Roman", serif;
     --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro SC",
       "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Segoe UI", sans-serif;
+    /* 腰封纸感 */
+    --obi-bg: rgba(245, 241, 233, 0.96);
+    --obi-text: #2b2620;
+    --obi-text-2: #6e675b;
   }
 
   * { box-sizing: border-box; }
@@ -293,13 +299,14 @@
   details.subcat summary:hover { background: var(--panel-2); }
   details.subcat .opt { font-size: 14px; padding: 6px 10px; }
 
-  /* ---------- 卡片（统一书形 · 偶数列下移的错落排列） ---------- */
+  /* ---------- 3D 书籍卡片（统一书形 · 偶数列下移的错落排列） ---------- */
   main { min-width: 0; }
   #grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    column-gap: 22px;
-    row-gap: 68px;            /* 行距要大于列错位量，错下来的卡片才有地方待 */
+    column-gap: 40px;
+    row-gap: 84px;            /* 行距要大于列错位量，还要容下底部投影 */
+    padding-top: 10px;
   }
   /* 错落：偶数列整体下移。用 translate 属性而不是 transform——
      translate 和 hover 的 transform 上浮互不覆盖，也不影响布局不会逐行漂移 */
@@ -319,108 +326,187 @@
     .card:nth-child(4n+2), .card:nth-child(4n+4) { translate: none; }
     .card:nth-child(5n+2), .card:nth-child(5n+4) { translate: 0 44px; }
   }
+
+  /* 卡片只是「透视舞台」：本身不画书，书在 .book 里用 preserve-3d 拼 */
   .card {
-    position: relative; overflow: hidden;
+    position: relative;
     aspect-ratio: 2 / 3;        /* 所有卡片统一书形尺寸 */
-    background: linear-gradient(160deg, var(--panel-2), var(--panel));
-    border: 1px solid var(--stroke); border-radius: var(--radius-l);
-    transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
-    animation: rise .55s var(--ease) backwards;
+    perspective: 1600px;
+    container-type: inline-size; /* 书厚、字号都按卡片宽度走（cqw） */
+    cursor: pointer;
+    outline: none;
   }
-  /* 封面铺满统一尺寸的卡片（超出部分裁掉） */
-  .card .cover-img {
-    position: absolute; inset: 0; z-index: 0;
-    width: 100%; height: 100%; object-fit: cover;
-  }
-  .card .scrim {
-    position: absolute; inset: 0; z-index: 1; pointer-events: none;
-    background: linear-gradient(to bottom,
-      rgba(8,8,12,.30), rgba(8,8,12,0) 32%,
-      rgba(8,8,12,.28) 52%, rgba(8,8,12,.78) 74%, rgba(8,8,12,.92));
-  }
-  /* 文字全部收进底部容器：idx/书名/作者/梗概（标签只留在详情弹窗） */
-  .card .card-text {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
-    padding: 18px 16px 15px; display: flex; flex-direction: column; gap: 6px;
-    max-height: 78%; overflow: hidden;
-  }
-  .card::before {  /* 顶部暖橙渐晕，hover 亮起 */
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 120px; z-index: 2;
-    background: radial-gradient(80% 100% at 50% 0%, rgba(255,90,31,.1), transparent 70%);
-    opacity: 0; transition: opacity .4s; pointer-events: none;
-  }
-  .card:hover {
-    transform: translateY(-5px);
-    border-color: rgba(255,255,255,.2);
-    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05) inset;
-  }
-  .card:hover::before { opacity: 1; }
-  .card:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 3px;
-    border-color: var(--accent);
-  }
-  /* 封面卡上的文字可读性：统一浅色 + 阴影 */
-  .card.has-cover .idx, .card.has-cover .title,
-  .card.has-cover .author, .card.has-cover .summary {
-    text-shadow: 0 1px 8px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6);
-  }
-  .card.has-cover .author, .card.has-cover .summary { color: #e8e6e1; }
-  .card.has-cover .summary.empty { color: rgba(255,255,255,.55); }
+  /* 只有视口附近的卡片才「立起来」并播入场动画（2407 张全建 3D 图层会卡死） */
+  .card.inview { animation: rise .5s var(--ease) backwards; }
+  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
 
-  /* 卡片勾选框：平时隐身，hover 或已选才现身（z-index 压住顶部渐晕，别抢走点击） */
-  .card .pick {
-    position: absolute; top: 18px; right: 18px; z-index: 2;
-    padding: 4px; cursor: pointer; opacity: 0;
-    transition: opacity .2s var(--ease);
-  }
-  .card:hover .pick, .card.picked .pick { opacity: 1; }
-  .card.picked {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent) inset, 0 10px 32px rgba(0,0,0,.45);
+  /* 地面投影：书底下一团椭圆，用渐变的透明边做柔和，不用 blur 滤镜（滤镜每张都要重绘，卡） */
+  .card .shadow {
+    position: absolute; left: 3%; right: 15%; bottom: -4.5%; height: 8%;
+    background: radial-gradient(52% 62% at 46% 42%,
+      rgba(0,0,0,.62), rgba(0,0,0,.26) 46%, transparent 72%);
+    transition: all .55s var(--ease);
+    pointer-events: none;
   }
 
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
-
-  .card .idx {
-    font-family: var(--serif); font-style: italic; font-size: 12px;
-    color: var(--accent); letter-spacing: .06em; margin-bottom: 2px;
-    display: flex; align-items: center; gap: 8px;
+  /* 默认「平躺」：不建 3D 上下文，front 就是一张平封面，离屏卡片成本≈一张图 */
+  .card .book {
+    position: absolute; inset: 0;
+    --t: 34px;              /* 书厚兜底值 */
+    --t: 14cqw;             /* 容器查询时按卡片宽度取厚：厚书脊才有立体感 */
   }
-  .card .idx::after { content: ""; height: 1px; width: 26px; background: var(--accent); opacity: .5; }
-  .card .title {
+  /* 进视口（含 600px 余量）才建立 3D：左书脊朝向读者，静止带倾斜角 */
+  .card.inview .book {
+    transform-style: preserve-3d;
+    transform: rotateY(27deg) rotateX(1.5deg);
+    transition: transform .6s var(--ease);
+  }
+  .card.inview:hover .book {
+    transform: rotateY(9deg) rotateX(0deg) translateY(-12px);
+  }
+  .card.inview:hover .shadow { transform: scaleX(1.12) translateX(3%); opacity: .8; }
+
+  .card .face { position: absolute; }
+  /* 离屏时只留正面，三个侧面一律不画（不建图层、不参与合成、不重绘） */
+  .card .spine, .card .pages, .card .back { display: none; }
+  .card.inview .spine, .card.inview .pages, .card.inview .back { display: block; }
+
+  /* 封面（正面） */
+  .card .front {
+    inset: 0;
+    transform: translateZ(calc(var(--t) / 2));
+    border-radius: 2px 6px 6px 2px;   /* 书脊侧几乎直角，书口侧略圆 */
+    overflow: hidden;
+    background: linear-gradient(160deg, #2b2b33, #17171b);  /* 无封面时的渐变底 */
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .card .front .cover-img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  }
+  /* 封面光影：书脊侧只留一道很浅很窄的折痕（黑缝太粗会像裂开的线），顶部受光 */
+  .card .front::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,.14), transparent 5%),   /* 浅折痕，白封面也不扎眼 */
+      linear-gradient(115deg, rgba(255,255,255,.10), transparent 32%);
+  }
+
+  /* 书脊（左侧，微鼓的弧面 + 竖排书名）。颜色取自封面（--cov，由 JS 取封面左缘平均色）。
+     明暗分布：外侧（靠封底的铰链）最暗，脊面中间略亮做弧面，**与封面相接的一端 ≈ 封面色本身**——
+     这样书脊和封面是连续的一块布，不会出现一条黑缝。
+     没封面（渐变卡）时回退成统一的深灰，与 front 的渐变底相配。 */
+  .card .spine {
+    /* 宽出 0.6px 并相应左移：接缝处与封面微微相叠，抗锯齿也不会透出黑缝 */
+    top: 0; bottom: 0; left: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(-90deg);
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--cov, #2a2a33) 45%, #000) 0%,    /* 外侧铰链：最暗 */
+      var(--cov, #2a2a33) 42%,                                 /* 脊面主体 */
+      color-mix(in srgb, var(--cov, #34343f) 86%, #fff) 66%,   /* 弧面受光带 */
+      var(--cov, #2a2a33) 88%,                                 /* 回到基色 */
+      color-mix(in srgb, var(--cov, #2a2a33) 94%, #fff) 100%); /* 接封面端 ≈ 封面色 */
+    border-radius: 3px 0 0 3px;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 12% 0;
+    overflow: hidden;
+    box-shadow: inset -1px 0 2px rgba(255,255,255,.22);  /* 铰链处一丝高光，不是黑影 */
+  }
+  .card .spine .spine-title {
+    writing-mode: vertical-rl;
+    font-family: var(--serif); font-size: clamp(9px, 5.2cqw, 14px);
+    letter-spacing: .14em; color: var(--spinetext, rgba(235,232,226,.72));
+    max-height: 100%; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* 腰封绕到书脊上的那段：与正面腰封同底（11%）、同高（47cqw），
+     纸色和顶部橙线连续，看着就是一整条纸带从封面包过书脊。
+     skewY(5deg)：以拐角为轴错切，让上边线、下边线一起往书脊外侧（封底方向）微微上斜（外侧抬升约5px），
+     拐角仍与正面腰封对齐不脱开；整本书的角度不变，只斜这一小条。 */
+  .card .spine-obi {
+    position: absolute; left: 0; right: 0; bottom: 11%;
+    height: 47cqw;
+    transform-origin: right center;
+    transform: translateZ(0.5px) skewY(5deg);
+    background: var(--obi-bg);
+    border-top: 2px solid var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,.28);
+  }
+
+  /* 书口（右侧页边）：米白页叠 + 细线，同样宽出 0.6px 与封面微叠防黑缝 */
+  .card .pages {
+    top: 1px; bottom: 1px; right: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(90deg);
+    background:
+      repeating-linear-gradient(90deg,
+        #f2ede2 0px, #f2ede2 1.5px,
+        #d7d0c0 1.5px, #d7d0c0 3px);
+    border-radius: 0 2px 2px 0;
+  }
+
+  /* 背面（基本看不到，但翻转瞬间不穿帮）：跟着封面色走，比封面略深 */
+  .card .back {
+    inset: 0;
+    transform: translateZ(calc(var(--t) / -2)) rotateY(180deg);
+    background: linear-gradient(160deg,
+      color-mix(in srgb, var(--cov, #1c1c22) 72%, #000),
+      color-mix(in srgb, var(--cov, #121216) 52%, #000));
+    border-radius: 6px 2px 2px 6px;
+  }
+
+  /* ---------- 腰封（obi）：横贯封面下部，写书名/作者/简介 ----------
+     高度固定成 47cqw（不再由内容撑开），这样书脊上那段才能和它对齐成一整条。 */
+  .card .obi {
+    position: absolute; left: -3%; width: 106%; bottom: 11%;
+    height: 47cqw;
+    transform: translateZ(1px);   /* 浮在封面上 1px，避免 z-fighting */
+    background: var(--obi-bg);
+    padding: 3.5% 7%;
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    border-top: 2px solid var(--accent);
+    display: flex; flex-direction: column; gap: 2px; justify-content: center;
+    overflow: hidden;
+  }
+  .card .obi-title {
     font-family: var(--serif); font-weight: 700;
-    font-size: 16.5px; letter-spacing: .01em; line-height: 1.35;
-    color: var(--text);
+    font-size: clamp(12px, 5.8cqw, 17px);
+    line-height: 1.28; letter-spacing: .01em; color: var(--obi-text);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .card .author {
-    font-size: 12.5px; color: var(--text-2); font-weight: 500;
+  .card .obi-author {
+    font-size: clamp(9px, 4.2cqw, 12px); font-weight: 600;
+    color: var(--obi-text-2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .card .summary {
-    font-size: 12.5px; color: var(--text-2); line-height: 1.6;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  .card .obi-author::before { content: "〔著〕"; color: var(--accent); font-weight: 500; margin-right: 2px; font-size: .85em; }
+  .card .obi-summary {
+    font-size: clamp(8.5px, 3.9cqw, 11.5px); line-height: 1.5;
+    color: var(--obi-text-2); margin-top: 1px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .card .summary.empty { color: var(--text-3); }
-  .tag {   /* 基础标签样式：hero、弹窗也在用；卡片内的微调见 .card .tag */
-    font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 999px;
-    white-space: nowrap; letter-spacing: .01em;
-    background: rgba(255,255,255,.06); color: var(--text-2);
-    border: 1px solid var(--stroke-soft);
+  .card .obi-summary.empty { font-style: italic; opacity: .7; }
+
+  /* 选中态：封面描一圈橙 */
+  .card.picked .front {
+    box-shadow: inset 0 0 0 2px var(--accent), 0 0 24px var(--glow);
   }
-  .tag.coll {
-    font-weight: 600; border: none;
-    background: var(--accent-soft); color: #ff8a5c;
+
+  /* 卡片勾选框：平时隐身，hover 或已选才现身（压在书上方）。不用 backdrop-filter，省每张一次离屏混合 */
+  .card .pick {
+    position: absolute; top: 12px; right: 12px; z-index: 5;
+    padding: 5px; cursor: pointer; opacity: 0;
+    transition: opacity .2s var(--ease);
+    background: rgba(12,12,16,.78); border-radius: 9px;
   }
-  .tag.fmt { text-transform: uppercase; letter-spacing: .04em; }
-  .card .tag { font-size: 10.5px; padding: 2px 8px; }
+  .card:hover .pick, .card.picked .pick { opacity: 1; }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
   #empty, #loading { text-align: center; color: var(--text-3); padding: 100px 0; font-size: 15px; }
   #empty { display: none; }
   #empty .big { font-size: 44px; margin-bottom: 14px; opacity: .6; }
   #emptyReset { margin-top: 22px; }
 
-  /* ---------- 书籍详情弹窗 ---------- */
+  /* ---------- 书籍详情弹窗（书随详情：左书右文） ---------- */
   .modal-mask {
     position: fixed; inset: 0; z-index: 100;
     background: rgba(8, 8, 12, 0.6);
@@ -430,10 +516,10 @@
   }
   .modal-mask.show { opacity: 1; pointer-events: auto; }
   .modal {
-    width: 100%; max-width: 620px; max-height: 84vh; overflow-y: auto;
-    background: linear-gradient(165deg, #1d1d23, #16161a);
+    width: 100%; max-width: 920px; max-height: 86vh; overflow: hidden auto;
+    background: #17171b;
     border: 1px solid var(--stroke); border-radius: var(--radius-l);
-    padding: 34px 36px 30px; position: relative;
+    position: relative;
     box-shadow: 0 30px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04) inset;
     transform: translateY(16px) scale(.98); transition: transform .32s var(--ease);
   }
@@ -441,8 +527,108 @@
   .modal::-webkit-scrollbar { width: 8px; }
   .modal::-webkit-scrollbar-thumb { background: #2a2a30; border-radius: 4px; }
 
+  /* 封面氛围：封面图放大糊化垫在内容底下，深色渐变压一层保可读性 */
+  .modal .m-ambient {
+    position: absolute; inset: -60px; z-index: 0; pointer-events: none;
+    background-size: cover; background-position: center;
+    filter: blur(64px) saturate(1.35) brightness(.8);
+    opacity: .5;
+  }
+  .modal .m-scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(150deg, rgba(24,24,30,.82), rgba(18,18,22,.9) 55%, rgba(16,16,20,.94));
+  }
+  .modal .m-body {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: 262px 1fr; gap: 52px;
+    padding: 46px 48px 38px; align-items: center;
+  }
+
+  /* 左侧舞台：和卡片同一本 3D 书（去掉腰封露出完整封面），hover 会像卡片一样转正 */
+  .modal .m-stage { position: relative; aspect-ratio: 2/3; perspective: 1400px; }
+  .modal .m-stage .m-ground {
+    position: absolute; left: 2%; right: 14%; bottom: -6%; height: 8%;
+    background: radial-gradient(52% 62% at 46% 42%, rgba(0,0,0,.66), rgba(0,0,0,.28) 46%, transparent 72%);
+    pointer-events: none;
+  }
+  .modal .m-book {
+    position: absolute; inset: 0; --t: 36px;
+    transform-style: preserve-3d;
+    transform: rotateY(24deg) rotateX(1.5deg);
+    transition: transform .5s var(--ease);
+  }
+  .modal .m-stage:hover .m-book { transform: rotateY(10deg) rotateX(0deg) translateY(-8px); }
+  .modal.enter .m-book { animation: mBookIn .62s var(--ease) .1s backwards; }
+  @keyframes mBookIn {
+    from { opacity: 0; transform: rotateY(52deg) rotateX(3deg) translateY(30px); }
+    to   { opacity: 1; transform: rotateY(24deg) rotateX(1.5deg) translateY(0); }
+  }
+  .modal .m-face { position: absolute; }
+  .modal .m-front {
+    inset: 0; transform: translateZ(calc(var(--t) / 2));
+    border-radius: 2px 6px 6px 2px; overflow: hidden;
+    background: linear-gradient(160deg, #2b2b33, #17171b);  /* 无封面时的渐变底 */
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .modal .m-front img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .modal .m-front::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,.14), transparent 5%),
+      linear-gradient(115deg, rgba(255,255,255,.10), transparent 32%);
+  }
+  .modal .m-spine {
+    top: 0; bottom: 0; left: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(-90deg);
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--cov, #2a2a33) 45%, #000) 0%,
+      var(--cov, #2a2a33) 42%,
+      color-mix(in srgb, var(--cov, #34343f) 86%, #fff) 66%,
+      var(--cov, #2a2a33) 88%,
+      color-mix(in srgb, var(--cov, #2a2a33) 94%, #fff) 100%);
+    border-radius: 3px 0 0 3px;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 12% 0; overflow: hidden;
+    box-shadow: inset -1px 0 2px rgba(255,255,255,.22);
+  }
+  .modal .m-spine .spine-title {
+    writing-mode: vertical-rl; font-family: var(--serif); font-size: 13px;
+    letter-spacing: .14em; color: var(--spinetext, rgba(235,232,226,.72));
+    max-height: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .modal .m-pages {
+    top: 1px; bottom: 1px; right: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(90deg);
+    background: repeating-linear-gradient(90deg, #f2ede2 0px, #f2ede2 1.5px, #d7d0c0 1.5px, #d7d0c0 3px);
+    border-radius: 0 2px 2px 0;
+  }
+  .modal .m-back {
+    inset: 0; transform: translateZ(calc(var(--t) / -2)) rotateY(180deg);
+    background: linear-gradient(160deg,
+      color-mix(in srgb, var(--cov, #1c1c22) 72%, #000),
+      color-mix(in srgb, var(--cov, #121216) 52%, #000));
+    border-radius: 6px 2px 2px 6px;
+  }
+
+  /* 右侧文字：排版沿用原弹窗，只加逐项升起的入场 */
+  .modal.enter .m-text > * { animation: mTextIn .5s var(--ease) backwards; }
+  .modal.enter .m-text > *:nth-child(1) { animation-delay: .16s; }
+  .modal.enter .m-text > *:nth-child(2) { animation-delay: .22s; }
+  .modal.enter .m-text > *:nth-child(3) { animation-delay: .28s; }
+  .modal.enter .m-text > *:nth-child(4) { animation-delay: .34s; }
+  .modal.enter .m-text > *:nth-child(5) { animation-delay: .40s; }
+  .modal.enter .m-text > *:nth-child(6) { animation-delay: .46s; }
+  .modal.enter .m-text > *:nth-child(7) { animation-delay: .52s; }
+  .modal.enter .m-text > *:nth-child(8) { animation-delay: .58s; }
+  @keyframes mTextIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 760px) {
+    .modal .m-body { grid-template-columns: 1fr; gap: 34px; padding: 40px 30px 30px; }
+    .modal .m-stage { max-width: 210px; margin: 0 auto; width: 100%; }
+  }
+
   .modal .m-close {
-    position: absolute; top: 18px; right: 18px;
+    position: absolute; top: 18px; right: 18px; z-index: 20;
     width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--stroke);
     background: var(--panel); color: var(--text-2); font-size: 17px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
@@ -493,9 +679,17 @@
   .m-download-status { display: none; color: var(--text-2); font-size: 13px; }
   body.downloads-disabled .m-download-status { display: block; }
 
-  /* 卡片可点击提示 */
-  .card { cursor: pointer; }
-  .card:active { transform: translateY(-3px); }
+  .tag {   /* 基础标签样式：hero、弹窗在用 */
+    font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 999px;
+    white-space: nowrap; letter-spacing: .01em;
+    background: rgba(255,255,255,.06); color: var(--text-2);
+    border: 1px solid var(--stroke-soft);
+  }
+  .tag.coll {
+    font-weight: 600; border: none;
+    background: var(--accent-soft); color: #ff8a5c;
+  }
+  .tag.fmt { text-transform: uppercase; letter-spacing: .04em; }
 
   /* ---------- 批量选择浮条：选中 1 本才滑出 ---------- */
   .sel-bar {
@@ -532,6 +726,7 @@
     .layout { grid-template-columns: 1fr; gap: 24px; }
     aside { position: static; max-height: none; }
     .hero { padding: 48px 24px 32px; }
+    #grid { column-gap: 26px; row-gap: 64px; }
     .card .pick { opacity: 1; }
   }
   @media (hover: none), (pointer: coarse) {
@@ -539,6 +734,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
+    .card.inview .book { transform: rotateY(16deg); }
   }
 </style>
 </head>
@@ -565,8 +761,8 @@
 <section class="hero">
   <div class="kicker">
     <span class="rule"></span>
-    <span class="no">No.01</span>
-    <span class="tag">书籍藏书</span>
+    <span class="no">No.02</span>
+    <span class="tag">书籍藏书 · 立体书封</span>
     <span class="rule r"></span>
   </div>
   <h2>书籍<em>预览</em></h2>
@@ -599,18 +795,33 @@
 
 <div class="modal-mask" id="modalMask">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="m-ambient" id="mAmbient"></div>
+    <div class="m-scrim"></div>
     <button class="m-close" id="modalClose" title="关闭">✕</button>
-    <div class="m-idx" id="mIdx"></div>
-    <h3 class="m-title" id="mTitle"></h3>
-    <div class="m-author" id="mAuthor"></div>
-    <div class="m-sec"><span class="fno">01</span>内容简介</div>
-    <div class="m-summary" id="mSummary"></div>
-    <div class="m-sec"><span class="fno">02</span>分类信息</div>
-    <div class="m-crumbs" id="mCrumbs"></div>
-    <div class="m-foot">
-      <button class="m-download" id="mDownload">下载书籍 ↓</button>
-      <div class="m-download-status" id="mDownloadStatus">当前仅提供书籍预览，下载暂未开放。</div>
-      <div class="m-path" id="mPath"></div>
+    <div class="m-body">
+      <div class="m-stage">
+        <span class="m-ground"></span>
+        <div class="m-book" id="mBook">
+          <div class="m-face m-back"></div>
+          <div class="m-face m-spine"><span class="spine-title" id="mSpineTitle"></span></div>
+          <div class="m-face m-pages"></div>
+          <div class="m-face m-front"><img id="mCover" alt=""></div>
+        </div>
+      </div>
+      <div class="m-text">
+        <div class="m-idx" id="mIdx"></div>
+        <h3 class="m-title" id="mTitle"></h3>
+        <div class="m-author" id="mAuthor"></div>
+        <div class="m-sec"><span class="fno">01</span>内容简介</div>
+        <div class="m-summary" id="mSummary"></div>
+        <div class="m-sec"><span class="fno">02</span>分类信息</div>
+        <div class="m-crumbs" id="mCrumbs"></div>
+        <div class="m-foot">
+          <button class="m-download" id="mDownload">下载书籍 ↓</button>
+          <div class="m-download-status" id="mDownloadStatus">当前仅提供书籍预览，下载暂未开放。</div>
+          <div class="m-path" id="mPath"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -624,15 +835,19 @@
   <button class="btn primary" id="selDownload">下载选中 ↓</button>
 </div>
 
-<script src="./filter_state.js"></script>
+<script src="filter_state.js"></script>
 <script>
 let allBooks = [];
 let filtersData = { collections: {}, formats: [] };
 
 // 纯静态部署（Cloudflare Pages）没有 /api，启动时探一次就定下走哪条路。
-// 同一份 index.html 因此本地和线上都能跑，不用维护两份。
+// 同一份页面因此本地和线上都能跑，不用维护两份。
 let staticMode = false;
 let siteConfig = { downloadBase: "" };
+
+// 挂载点自适应：页面在 /v2/ 下时，封面与静态 JSON 都在上一级，走 ../ 前缀；
+// 部署到站点根目录时它们就在同目录，前缀为空。filter_state.js 两个挂载点都放了一份同目录副本。
+const ASSET_PREFIX = location.pathname.includes("/v2/") ? "../" : "";
 
 const sel = {
   collections: new Set(), groups: new Set(), categories: new Set(),
@@ -645,6 +860,52 @@ let shownBooks = [];
 
 const $ = (s) => document.querySelector(s);
 const grid = $("#grid"), emptyEl = $("#empty"), loadingEl = $("#loading");
+
+// 性能关键：只有视口附近（上下各留 600px 余量）的卡片才打 .inview 标——
+// 打了标的才建立 3D 图层、画书脊/书口；离屏卡片只是平躺的一张平封面，
+// 不合成、不重绘。2407 张全建 3D 会卡死，视口附近这几十张则毫无压力。
+// 这里不用 IntersectionObserver：本项目曾实测，在某些不合成帧的环境里 IO 根本不回调，
+// 卡片会永远起不来。改用「缓存文档坐标」：渲染/缩放时量一次每张卡的位置，
+// 滚动时只拿 scrollY 跟缓存值比，不再逐卡 getBoundingClientRect() 强制全页重排，
+// 这样既可靠，又去掉了原来每次滚动都触发的 2407 次同步 reflow——那才是滑动卡顿的元凶。
+const ARM_MARGIN = 600;
+let cardRects = [];          // 与 grid.children 同序，存文档坐标 {top, bottom}
+
+function cacheCardRects() {
+  const cards = grid.children;
+  cardRects = new Array(cards.length);
+  const base = window.scrollY;
+  for (let i = 0; i < cards.length; i++) {
+    const r = cards[i].getBoundingClientRect();
+    cardRects[i] = { top: r.top + base, bottom: r.bottom + base };
+  }
+}
+
+function armVisible() {
+  const viewTop = window.scrollY - ARM_MARGIN;
+  const viewBottom = window.scrollY + window.innerHeight + ARM_MARGIN;
+  const cards = grid.children;
+  for (let i = 0; i < cards.length; i++) {
+    const r = cardRects[i];
+    cards[i].classList.toggle("inview", r.bottom > viewTop && r.top < viewBottom);
+  }
+}
+let armTimer = null;
+function scheduleArm() {                     // 节流：80ms 最多重算一遍，滚动时不会反复触发
+  if (armTimer) return;
+  armTimer = setTimeout(() => { armTimer = null; armVisible(); }, 80);
+}
+window.addEventListener("scroll", scheduleArm, { passive: true });
+
+let armResizeTimer = null;
+window.addEventListener("resize", () => {    // 尺寸变了坐标全废，重量一遍；拖动缩放太频繁，也节流
+  if (armResizeTimer) return;
+  armResizeTimer = setTimeout(() => {
+    armResizeTimer = null;
+    cacheCardRects();
+    armVisible();
+  }, 80);
+}, { passive: true });
 
 // 404 和「返回的不是 JSON」都要算失败：有些静态托管会拿 HTML 兜底未知路径
 function getJSON(url) {
@@ -665,8 +926,8 @@ async function loadAll() {
     staticMode = true;
     document.body.classList.add("static-mode");
     [booksRes, filtersRes, siteConfig] = await Promise.all([
-      getJSON("./books.json"), getJSON("./filters.json"),
-      getJSON("./config.json").catch(() => siteConfig),   // 配置丢了也别把整站拖垮
+      getJSON(ASSET_PREFIX + "books.json"), getJSON(ASSET_PREFIX + "filters.json"),
+      getJSON(ASSET_PREFIX + "config.json").catch(() => siteConfig),   // 配置丢了也别把整站拖垮
     ]);
   }
   allBooks = booksRes.books;
@@ -879,26 +1140,36 @@ function renderCards(list) {
     card.tabIndex = 0;
     card.style.animationDelay = Math.min(i, 24) * 20 + "ms";
     const idx = "A" + (i + 1);
-    // 封面是相对路径（covers/xx.jpg），API 模式和静态模式同目录都能取到；
-    // alt 留空：书名就在卡片文字里，封面属于装饰，别让读屏器念两遍
+    // 封面在上一级目录（covers/xx.jpg），统一加 ASSET_PREFIX；
+    // alt 留空：书名就在腰封上，封面属于装饰，别让读屏器念两遍
     const coverHtml = b.cover
-      ? `<img class="cover-img" loading="lazy" decoding="async" src="${encodeURI(b.cover)}" alt=""><div class="scrim"></div>`
+      ? `<img class="cover-img" loading="lazy" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">`
       : "";
-    // 卡片上只有 idx/书名/作者/梗概（收在底部容器），分类标签只在详情弹窗里
-    card.innerHTML = coverHtml + `
-      <label class="pick" title="选择这本书"><input type="checkbox" aria-label="选择《${esc(b.title || "未命名")}》"${on ? " checked" : ""}><span class="box"></span></label>
-      <div class="card-text">
-        <div class="idx">${idx}</div>
-        <div class="title" title="${esc(b.title)}">${esc(b.title)}</div>
-        <div class="author" title="${esc(b.author || "")}">${esc(b.author || "佚名")}</div>
-        <div class="summary ${b.summary ? "" : "empty"}">${b.summary ? esc(b.summary) : "暂无简介"}</div>
-      </div>`;
-    // 封面加载失败（文件被删/还没生成）：摘掉图和蒙版，回退成渐变文字卡
+    // 3D 书：背面 + 书脊（竖排书名）+ 书口 + 封面（封面上压着腰封）
+    card.innerHTML = `
+      <span class="shadow"></span>
+      <div class="book">
+        <div class="face back"></div>
+        <div class="face spine"><span class="spine-title">${esc(b.title || "未命名")}</span><div class="spine-obi"></div></div>
+        <div class="face pages"></div>
+        <div class="face front">
+          ${coverHtml}
+          <div class="obi">
+            <div class="obi-title" title="${esc(b.title)}">${esc(b.title)}</div>
+            <div class="obi-author" title="${esc(b.author || "")}">${esc(b.author || "佚名")}</div>
+            <div class="obi-summary ${b.summary ? "" : "empty"}">${b.summary ? esc(b.summary) : "暂无简介"}</div>
+          </div>
+        </div>
+      </div>
+      <label class="pick" title="选择这本书"><input type="checkbox" aria-label="选择《${esc(b.title || "未命名")}》"${on ? " checked" : ""}><span class="box"></span></label>`;
+    // 封面加载失败（文件被删/还没生成）：摘掉图，front 回退成渐变底，腰封仍在
     const coverImg = card.querySelector(".cover-img");
     if (coverImg) {
+      // 封面就绪后取色，给书脊/封底染色（已缓存的直接取，否则等 load）
+      if (coverImg.complete && coverImg.naturalWidth) tintBookFromCover(card, coverImg);
+      else coverImg.addEventListener("load", () => tintBookFromCover(card, coverImg), { once: true });
       coverImg.addEventListener("error", () => {
         coverImg.remove();
-        card.querySelector(".scrim")?.remove();
         card.classList.remove("has-cover");
         card.classList.add("no-cover");
       });
@@ -919,12 +1190,44 @@ function renderCards(list) {
     frag.appendChild(card);
   });
   grid.appendChild(frag);
+  cacheCardRects();     // 量一次每张卡的文档坐标，之后滚动只比对缓存，不重排
+  armVisible();         // 立即标记当前视口内的卡片为 3D，其余保持平躺
 }
 
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/* 从封面提取书脊色：取封面靠左一条（与书脊相接的那侧）的平均色，
+   书脊/封底跟着封面走，看起来才是一本真书，而不是统一的灰壳。
+   同源图片，canvas 不会被污染，放心读像素。 */
+function coverSpineColor(img) {
+  try {
+    const w = 8, h = 8;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    const sw = Math.max(1, Math.floor(img.naturalWidth * 0.18));  // 左缘 18% 一条
+    cx.drawImage(img, 0, 0, sw, img.naturalHeight, 0, 0, w, h);
+    const d = cx.getImageData(0, 0, w, h).data;
+    let r = 0, g = 0, b = 0;
+    const n = w * h;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  } catch { return null; }
+}
+
+// 把取到的颜色写到卡片 CSS 变量上；书脊浅色时用深字、深色时用浅字
+function tintBookFromCover(card, img) {
+  const c = coverSpineColor(img);
+  if (!c) return;
+  const [r, g, b] = c;
+  card.style.setProperty("--cov", `rgb(${r},${g},${b})`);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  card.style.setProperty("--spinetext",
+    lum > 150 ? "rgba(32,28,24,.8)" : "rgba(238,235,230,.82)");
 }
 
 /* ---------- 批量选择与下载 ---------- */
@@ -1105,6 +1408,29 @@ function openModal(b, idx) {
     `<span class="tag fmt">${esc(b.format)}</span>`;
 
   $("#mPath").textContent = `${String(b.format || "PDF").toUpperCase()} · ${fmtSize(b.size || 0)}`;
+
+  // 详情里的这本书：封面、书脊取色、氛围光都从卡片延续过来。
+  // 每次打开先清掉上一本的取色，免得无封面书沾上上一本的书脊色。
+  const mBook = $("#mBook");
+  mBook.style.removeProperty("--cov");
+  mBook.style.removeProperty("--spinetext");
+  $("#mSpineTitle").textContent = b.title || "未命名";
+  const mCover = $("#mCover");
+  mCover.style.display = b.cover ? "" : "none";
+  $("#mAmbient").style.backgroundImage = b.cover ? `url("${ASSET_PREFIX}${encodeURI(b.cover)}")` : "none";
+  if (b.cover) {
+    const src = ASSET_PREFIX + encodeURI(b.cover);
+    mCover.onerror = () => { mCover.style.display = "none"; };
+    if (mCover.getAttribute("src") !== src) mCover.src = src;
+    if (mCover.complete && mCover.naturalWidth) tintBookFromCover(mBook, mCover);
+    else mCover.addEventListener("load", () => tintBookFromCover(mBook, mCover), { once: true });
+  }
+  // 重触发入场动画：书立起 + 文字逐项升起
+  const modalEl = modalMask.querySelector(".modal");
+  modalEl.classList.remove("enter");
+  void modalEl.offsetWidth;
+  modalEl.classList.add("enter");
+
   modalMask.classList.add("show");
   document.body.style.overflow = "hidden";
   $("#modalClose").focus();

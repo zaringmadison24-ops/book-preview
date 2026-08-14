@@ -835,7 +835,7 @@
   <button class="btn primary" id="selDownload">下载选中 ↓</button>
 </div>
 
-<script src="../filter_state.js"></script>
+<script src="filter_state.js"></script>
 <script>
 let allBooks = [];
 let filtersData = { collections: {}, formats: [] };
@@ -845,8 +845,9 @@ let filtersData = { collections: {}, formats: [] };
 let staticMode = false;
 let siteConfig = { downloadBase: "" };
 
-// 本页面在 v2/ 子目录里，封面与静态 JSON 都在上一级，统一走这个前缀。
-const ASSET_PREFIX = "../";
+// 挂载点自适应：页面在 /v2/ 下时，封面与静态 JSON 都在上一级，走 ../ 前缀；
+// 部署到站点根目录时它们就在同目录，前缀为空。filter_state.js 两个挂载点都放了一份同目录副本。
+const ASSET_PREFIX = location.pathname.includes("/v2/") ? "../" : "";
 
 const sel = {
   collections: new Set(), groups: new Set(), categories: new Set(),
