@@ -1,0 +1,4 @@
+{
+  "downloadBase": "",
+  "downloadBaseNote": "书籍直链前缀，例：https://xxx.r2.dev/books/ 。留空则按同站相对路径取书。改这一个字段就能换下载源。"
+}

@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书籍预览 · Library</title>
+<style>
+  :root {
+    /* 炭灰 + 单点橙（参考图），叠苹果的干净 */
+    --bg: #131316;              /* 炭灰底，不闷 */
+    --bg-2: #17171b;
+    --panel: rgba(255, 255, 255, 0.045);
+    --panel-2: rgba(255, 255, 255, 0.07);
+    --stroke: rgba(255, 255, 255, 0.1);
+    --stroke-soft: rgba(255, 255, 255, 0.06);
+    --text: #f5f5f7;            /* Apple 文本白 */
+    --text-2: #a1a1aa;
+    --text-3: #6e6e76;
+    --accent: #ff5a1f;          /* 唯一强调色：亮橙 */
+    --accent-hover: #ff6a33;
+    --accent-soft: rgba(255, 90, 31, 0.14);
+    --glow: rgba(255, 90, 31, 0.28);
+    --radius-m: 14px;
+    --radius-l: 20px;
+    --ease: cubic-bezier(.28,.11,.32,1);
+    --blur: saturate(160%) blur(22px);
+    /* 编辑排版：衬线标题 + 无衬线正文 */
+    --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro SC",
+      "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(255,90,31,.35); }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #2a2a30; border-radius: 5px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a41; }
+
+  /* 背景氛围光：极克制的暖橙，几乎不可见 */
+  .aurora {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(55% 45% at 18% -5%, rgba(255,90,31,.07), transparent 62%),
+      radial-gradient(45% 40% at 88% 0%, rgba(255,90,31,.045), transparent 62%);
+  }
+  .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .5; }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10, 10, 15, 0.65);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    border-bottom: 1px solid var(--stroke-soft);
+  }
+  .header-inner {
+    max-width: 2040px; margin: 0 auto; padding: 14px 20px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .search-wrap { flex: 1; min-width: 240px; max-width: 620px; position: relative; }
+  .search-wrap svg {
+    position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: var(--text-3); pointer-events: none;
+  }
+  #search {
+    width: 100%; height: 42px; padding: 0 18px 0 41px;
+    font-size: 14px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--stroke); border-radius: 999px;
+    outline: none; transition: all .25s var(--ease);
+  }
+  #search::placeholder { color: var(--text-3); }
+  #search:focus {
+    background: var(--panel-2); border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft), 0 0 24px rgba(255,90,31,.1);
+  }
+
+  .header-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+  #count { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .btn {
+    height: 42px; padding: 0 20px; border: none; cursor: pointer;
+    font-family: inherit; font-size: 13.5px; font-weight: 600;
+    border-radius: 999px; transition: all .25s var(--ease); white-space: nowrap;
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: #fff; box-shadow: 0 4px 16px var(--glow);
+  }
+  .btn.primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 24px var(--glow); }
+  .btn.primary:active { transform: translateY(0); }
+  .btn:disabled { opacity: .55; cursor: default; transform: none; }
+
+  /* 次要按钮：描边态 */
+  .btn.ghost {
+    background: var(--panel); color: var(--text-2);
+    border: 1px solid var(--stroke); box-shadow: none;
+  }
+  .btn.ghost:hover { color: var(--text); border-color: rgba(255,255,255,.22); transform: translateY(-1px); }
+  /* 全选：套用 ghost 按钮外观 + 侧栏同款勾选框 */
+  .pick-all { display: inline-flex; align-items: center; gap: 9px; user-select: none; }
+
+  /* 有后端 / 纯静态两套操作，探测到哪种模式就只留哪一套。
+     默认藏静态那套：探测完成前先按本地模式显示，免得闪一下。 */
+  body.static-mode .local-only,
+  body:not(.static-mode) .static-only { display: none; }
+  /* 没有下载源时仍能多选、导出书名；只隐藏真正会下载 PDF 的操作。 */
+  body.downloads-disabled .m-download,
+  body.downloads-disabled #selDownload,
+  body.downloads-disabled #selCancel { display: none; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    max-width: 2040px; margin: 0 auto; padding: 76px 20px 44px; text-align: center;
+  }
+  /* 编辑排版：编号 + 衬线大标题 + 橙色结构线 */
+  .hero .kicker {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    margin-bottom: 26px;
+  }
+  .hero .kicker .no {
+    font-family: var(--serif); font-style: italic; font-size: 15px;
+    color: var(--accent); letter-spacing: .05em;
+  }
+  .hero .kicker .rule { height: 1px; width: 72px; background: linear-gradient(90deg, transparent, var(--accent)); }
+  .hero .kicker .rule.r { background: linear-gradient(90deg, var(--accent), transparent); }
+  .hero .kicker .tag {
+    font-size: 12.5px; font-weight: 600; letter-spacing: .3em; color: var(--text-2);
+    text-transform: uppercase;
+  }
+  .hero h2 {
+    font-family: var(--serif); font-weight: 900;
+    font-size: clamp(44px, 6.5vw, 84px); letter-spacing: .02em;
+    line-height: 1.04; margin: 0 0 20px;
+    color: var(--text);
+  }
+  .hero h2 em {
+    font-style: normal; color: var(--accent);
+  }
+  .hero .hero-rule {
+    width: 120px; height: 3px; margin: 26px auto 22px;
+    background: var(--accent); border-radius: 2px;
+    box-shadow: 0 0 18px var(--glow);
+  }
+  .hero p { font-size: 16px; color: var(--text-2); margin: 0; letter-spacing: .06em; }
+  .hero .stats {
+    display: flex; justify-content: center; gap: 56px; margin-top: 46px; flex-wrap: wrap;
+  }
+  .hero .stat { position: relative; padding: 0 8px; }
+  .hero .stat + .stat::before {
+    content: ""; position: absolute; left: -28px; top: 12%; height: 76%;
+    width: 1px; background: var(--stroke);
+  }
+  .hero .stat .num {
+    font-family: var(--serif); font-size: 40px; font-weight: 900; letter-spacing: 0;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .hero .stat .lbl { font-size: 13px; color: var(--text-3); margin-top: 6px; letter-spacing: .12em; }
+
+  /* ---------- 布局 ---------- */
+  .layout {
+    max-width: 2040px; margin: 0 auto; padding: 12px 20px 90px;
+    display: grid; grid-template-columns: 264px 1fr; gap: 40px; align-items: start;
+  }
+
+  /* ---------- 侧栏 ---------- */
+  aside {
+    position: sticky; top: 88px; max-height: calc(100vh - 112px); overflow-y: auto;
+    padding: 4px 26px 4px 0;
+    container: sidebar / inline-size;
+    /* 橙色分隔竖线：筛选区与卡片区的隔断 */
+    border-right: 2px solid transparent;
+    border-image: linear-gradient(180deg,
+      rgba(255,90,31,0) 0%, rgba(255,90,31,.9) 10%,
+      rgba(255,90,31,.9) 90%, rgba(255,90,31,0) 100%) 1;
+  }
+  aside::-webkit-scrollbar { width: 6px; }
+  aside::-webkit-scrollbar-thumb { background: #26262f; border: none; }
+  .side-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .side-head h2 {
+    font-size: 14px; font-weight: 700; color: var(--text-2);
+    letter-spacing: .1em; margin: 0; text-transform: uppercase;
+  }
+  #clearFilters {
+    font-size: 14px; color: var(--accent); background: none; border: none;
+    cursor: pointer; padding: 3px 8px; border-radius: 7px; font-weight: 500;
+    transition: background .2s;
+  }
+  #clearFilters:hover { background: var(--accent-soft); }
+
+  .filter-group { margin-top: 24px; }
+  .filter-hint {
+    margin: 10px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.7;
+  }
+  .fg-title {
+    font-size: 13px; font-weight: 700; color: var(--text-3);
+    letter-spacing: .08em; margin-bottom: 11px; text-transform: uppercase;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .fg-title .fno {
+    font-family: var(--serif); font-style: italic; font-weight: 400;
+    color: var(--accent); font-size: 12px; letter-spacing: .04em;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips.stack { flex-direction: column; align-items: stretch; }
+  .chips.stack .chip { justify-content: space-between; width: 100%; }
+  /* 阅读方向是固定的二选一：同宽并列，避免按钮随“左手/右手”文字长度跳动。 */
+  .chips.direction-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 8px;
+  }
+  .chips.direction-grid .chip {
+    min-width: 0; justify-content: space-between; padding-inline: 11px; gap: 5px;
+    white-space: nowrap;
+  }
+  .chips.direction-grid .lab, .chips.direction-grid .n { white-space: nowrap; }
+  /* 侧栏真的窄到连两项都容不下时，切回整行；绝不把“右手书籍”拆成两行。 */
+  @container sidebar (max-width: 220px) {
+    .chips.direction-grid { grid-template-columns: 1fr; }
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 15px; font-size: 14px; font-weight: 500; cursor: pointer;
+    background: var(--panel); color: var(--text-2);
+    border: 1px solid var(--stroke); border-radius: 999px;
+    transition: all .2s var(--ease); user-select: none; font-family: inherit;
+  }
+  .chip:hover { border-color: rgba(255,255,255,.22); color: var(--text); transform: translateY(-1px); }
+  .chip .n { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .chip.on { color: #fff; border-color: transparent; background: #1c1c21; }
+  .chip.on .n { color: rgba(255,255,255,.7); }
+  /* 顶层“书库类型”选中 = 实心橙；书库选中 = 深灰橙边；格式 = 深灰 */
+  .chip[data-kind="coll"].on { background: var(--accent); box-shadow: 0 3px 14px var(--glow); border-color: transparent; }
+  .chip[data-kind="group"].on { background: #1c1c21; border-color: var(--accent); color: #ffb49a; }
+  .chip[data-kind="fmt"].on { background: #1c1c21; border-color: rgba(255,255,255,.2); }
+
+  .cat-list { display: flex; flex-direction: column; gap: 3px; }
+  .opt {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    font-size: 14.5px; cursor: pointer; border-radius: 9px; color: var(--text-2);
+    transition: background .15s, color .15s; user-select: none;
+  }
+  .opt:hover { background: var(--panel-2); color: var(--text); }
+  /* 勾选框：侧栏筛选项、卡片选择、全选共用同一套视觉 */
+  .opt input, .pick input {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .opt .box, .pick .box {
+    width: 18px; height: 18px; flex-shrink: 0;
+    border: 1.5px solid rgba(255,255,255,.28); border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .18s var(--ease); background: transparent;
+  }
+  .opt .box::after, .pick .box::after {
+    content: ""; width: 10px; height: 6px;
+    border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) scale(0); transition: transform .18s var(--ease);
+    margin-top: -2px;
+  }
+  .opt input:checked + .box, .pick input:checked + .box {
+    background: var(--accent);
+    border-color: transparent; box-shadow: 0 0 10px var(--glow);
+  }
+  .opt input:focus-visible + .box, .pick input:focus-visible + .box {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+  .opt input:checked + .box::after, .pick input:checked + .box::after { transform: rotate(-45deg) scale(1); }
+  .opt input:checked ~ .lab { color: var(--text); }
+  /* 当前结果只选中了一部分 */
+  .pick input:indeterminate + .box { background: var(--accent-soft); border-color: var(--accent); }
+  .opt .lab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .n { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+  details.subcat { margin-left: 28px; }
+  details.subcat summary {
+    font-size: 13px; color: var(--text-3); cursor: pointer; padding: 5px 10px;
+    border-radius: 7px; list-style: none; user-select: none;
+  }
+  details.subcat summary::-webkit-details-marker { display: none; }
+  details.subcat summary::before { content: "›"; display: inline-block; margin-right: 6px; transition: transform .2s var(--ease); }
+  details.subcat[open] summary::before { transform: rotate(90deg); }
+  details.subcat summary:hover { background: var(--panel-2); }
+  details.subcat .opt { font-size: 14px; padding: 6px 10px; }
+
+  /* ---------- 卡片（统一书形 · 偶数列下移的错落排列） ---------- */
+  main { min-width: 0; }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    column-gap: 22px;
+    row-gap: 68px;            /* 行距要大于列错位量，错下来的卡片才有地方待 */
+  }
+  /* 错落：偶数列整体下移。用 translate 属性而不是 transform——
+     translate 和 hover 的 transform 上浮互不覆盖，也不影响布局不会逐行漂移 */
+  .card:nth-child(2n) { translate: 0 44px; }
+  @media (min-width: 900px) {
+    #grid { grid-template-columns: repeat(3, 1fr); }
+    .card:nth-child(2n) { translate: none; }
+    .card:nth-child(3n+2) { translate: 0 44px; }
+  }
+  @media (min-width: 1280px) {
+    #grid { grid-template-columns: repeat(4, 1fr); }
+    .card:nth-child(3n+2) { translate: none; }
+    .card:nth-child(4n+2), .card:nth-child(4n+4) { translate: 0 44px; }
+  }
+  @media (min-width: 1680px) {
+    #grid { grid-template-columns: repeat(5, 1fr); }
+    .card:nth-child(4n+2), .card:nth-child(4n+4) { translate: none; }
+    .card:nth-child(5n+2), .card:nth-child(5n+4) { translate: 0 44px; }
+  }
+  .card {
+    position: relative; overflow: hidden;
+    aspect-ratio: 2 / 3;        /* 所有卡片统一书形尺寸 */
+    background: linear-gradient(160deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--stroke); border-radius: var(--radius-l);
+    transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
+    animation: rise .55s var(--ease) backwards;
+  }
+  /* 封面铺满统一尺寸的卡片（超出部分裁掉） */
+  .card .cover-img {
+    position: absolute; inset: 0; z-index: 0;
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .card .scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(to bottom,
+      rgba(8,8,12,.30), rgba(8,8,12,0) 32%,
+      rgba(8,8,12,.28) 52%, rgba(8,8,12,.78) 74%, rgba(8,8,12,.92));
+  }
+  /* 文字全部收进底部容器：idx/书名/作者/梗概（标签只留在详情弹窗） */
+  .card .card-text {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+    padding: 18px 16px 15px; display: flex; flex-direction: column; gap: 6px;
+    max-height: 78%; overflow: hidden;
+  }
+  .card::before {  /* 顶部暖橙渐晕，hover 亮起 */
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 120px; z-index: 2;
+    background: radial-gradient(80% 100% at 50% 0%, rgba(255,90,31,.1), transparent 70%);
+    opacity: 0; transition: opacity .4s; pointer-events: none;
+  }
+  .card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255,255,255,.2);
+    box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.05) inset;
+  }
+  .card:hover::before { opacity: 1; }
+  .card:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+    border-color: var(--accent);
+  }
+  /* 封面卡上的文字可读性：统一浅色 + 阴影 */
+  .card.has-cover .idx, .card.has-cover .title,
+  .card.has-cover .author, .card.has-cover .summary {
+    text-shadow: 0 1px 8px rgba(0,0,0,.85), 0 0 2px rgba(0,0,0,.6);
+  }
+  .card.has-cover .author, .card.has-cover .summary { color: #e8e6e1; }
+  .card.has-cover .summary.empty { color: rgba(255,255,255,.55); }
+
+  /* 卡片勾选框：平时隐身，hover 或已选才现身（z-index 压住顶部渐晕，别抢走点击） */
+  .card .pick {
+    position: absolute; top: 18px; right: 18px; z-index: 2;
+    padding: 4px; cursor: pointer; opacity: 0;
+    transition: opacity .2s var(--ease);
+  }
+  .card:hover .pick, .card.picked .pick { opacity: 1; }
+  .card.picked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset, 0 10px 32px rgba(0,0,0,.45);
+  }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card .idx {
+    font-family: var(--serif); font-style: italic; font-size: 12px;
+    color: var(--accent); letter-spacing: .06em; margin-bottom: 2px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card .idx::after { content: ""; height: 1px; width: 26px; background: var(--accent); opacity: .5; }
+  .card .title {
+    font-family: var(--serif); font-weight: 700;
+    font-size: 16.5px; letter-spacing: .01em; line-height: 1.35;
+    color: var(--text);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card .author {
+    font-size: 12.5px; color: var(--text-2); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .summary {
+    font-size: 12.5px; color: var(--text-2); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card .summary.empty { color: var(--text-3); }
+  .tag {   /* 基础标签样式：hero、弹窗也在用；卡片内的微调见 .card .tag */
+    font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 999px;
+    white-space: nowrap; letter-spacing: .01em;
+    background: rgba(255,255,255,.06); color: var(--text-2);
+    border: 1px solid var(--stroke-soft);
+  }
+  .tag.coll {
+    font-weight: 600; border: none;
+    background: var(--accent-soft); color: #ff8a5c;
+  }
+  .tag.fmt { text-transform: uppercase; letter-spacing: .04em; }
+  .card .tag { font-size: 10.5px; padding: 2px 8px; }
+
+  #empty, #loading { text-align: center; color: var(--text-3); padding: 100px 0; font-size: 15px; }
+  #empty { display: none; }
+  #empty .big { font-size: 44px; margin-bottom: 14px; opacity: .6; }
+  #emptyReset { margin-top: 22px; }
+
+  /* ---------- 书籍详情弹窗 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(8, 8, 12, 0.6);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    opacity: 0; pointer-events: none; transition: opacity .28s var(--ease);
+  }
+  .modal-mask.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    width: 100%; max-width: 620px; max-height: 84vh; overflow-y: auto;
+    background: linear-gradient(165deg, #1d1d23, #16161a);
+    border: 1px solid var(--stroke); border-radius: var(--radius-l);
+    padding: 34px 36px 30px; position: relative;
+    box-shadow: 0 30px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04) inset;
+    transform: translateY(16px) scale(.98); transition: transform .32s var(--ease);
+  }
+  .modal-mask.show .modal { transform: translateY(0) scale(1); }
+  .modal::-webkit-scrollbar { width: 8px; }
+  .modal::-webkit-scrollbar-thumb { background: #2a2a30; border-radius: 4px; }
+
+  .modal .m-close {
+    position: absolute; top: 18px; right: 18px;
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--stroke);
+    background: var(--panel); color: var(--text-2); font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s var(--ease); line-height: 1;
+  }
+  .modal .m-close:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); transform: rotate(90deg); }
+
+  .modal .m-idx {
+    font-family: var(--serif); font-style: italic; font-size: 13px;
+    color: var(--accent); letter-spacing: .06em; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .modal .m-idx::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, var(--accent), transparent); opacity: .5; }
+  .modal .m-title {
+    font-family: var(--serif); font-weight: 900; font-size: 30px;
+    line-height: 1.25; letter-spacing: .01em; margin: 0 0 10px; color: var(--text);
+  }
+  .modal .m-author { font-size: 15px; color: var(--text-2); font-weight: 500; margin-bottom: 4px; }
+
+  .modal .m-sec {
+    font-size: 12px; font-weight: 700; color: var(--text-3); letter-spacing: .12em;
+    text-transform: uppercase; margin: 24px 0 10px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .modal .m-sec .fno { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--accent); }
+  .modal .m-summary {
+    font-size: 15px; line-height: 1.85; color: var(--text); letter-spacing: .01em;
+  }
+  .modal .m-summary.empty { color: var(--text-3); font-style: italic; }
+
+  .modal .m-crumbs { display: flex; flex-wrap: wrap; gap: 7px; }
+  .modal .m-foot {
+    display: flex; gap: 12px; align-items: center; margin-top: 30px;
+    padding-top: 22px; border-top: 1px solid var(--stroke-soft);
+  }
+  .modal .m-download {
+    height: 44px; padding: 0 24px; border: none; cursor: pointer; border-radius: 999px;
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    background: var(--accent); color: #fff; box-shadow: 0 4px 16px var(--glow);
+    transition: all .25s var(--ease); display: inline-flex; align-items: center; gap: 8px;
+  }
+  .modal .m-download:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 6px 24px var(--glow); }
+  .modal .m-download:disabled { opacity: .55; cursor: default; transform: none; }
+  .modal .m-path {
+    font-size: 12px; color: var(--text-3); word-break: break-all; flex: 1;
+    font-family: ui-monospace, monospace; line-height: 1.5;
+  }
+  .m-download-status { display: none; color: var(--text-2); font-size: 13px; }
+  body.downloads-disabled .m-download-status { display: block; }
+
+  /* 卡片可点击提示 */
+  .card { cursor: pointer; }
+  .card:active { transform: translateY(-3px); }
+
+  /* ---------- 批量选择浮条：选中 1 本才滑出 ---------- */
+  .sel-bar {
+    position: fixed; left: 50%; bottom: 26px; z-index: 60;
+    display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+    max-width: min(94vw, 760px); padding: 11px 14px 11px 24px;
+    background: rgba(23,23,27,.9);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--stroke); border-radius: var(--radius-l);
+    box-shadow: 0 18px 50px rgba(0,0,0,.55);
+    opacity: 0; pointer-events: none; transform: translate(-50%, 24px);
+    transition: opacity .3s var(--ease), transform .3s var(--ease);
+  }
+  .sel-bar.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  .sel-bar .sel-info {
+    font-size: 13.5px; color: var(--text-2); white-space: nowrap;
+    font-variant-numeric: tabular-nums; margin-right: 4px;
+  }
+  .sel-bar .sel-info b { color: var(--accent); font-weight: 700; font-size: 15px; }
+  .sel-bar .btn { height: 38px; padding: 0 18px; font-size: 13px; }
+
+  #toTop {
+    position: fixed; right: 28px; bottom: 28px; z-index: 40;
+    width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
+    background: rgba(23,23,27,.85); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    border: 1px solid var(--stroke); color: var(--text); font-size: 18px;
+    opacity: 0; pointer-events: none; transform: translateY(12px);
+    transition: all .3s var(--ease); box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  }
+  #toTop.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  #toTop:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 8px 30px var(--glow); }
+
+  @media (max-width: 940px) {
+    .layout { grid-template-columns: 1fr; gap: 24px; }
+    aside { position: static; max-height: none; }
+    .hero { padding: 48px 24px 32px; }
+    .card .pick { opacity: 1; }
+  }
+  @media (hover: none), (pointer: coarse) {
+    .card .pick { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="aurora"></div>
+
+<header>
+  <div class="header-inner">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+      <input id="search" type="text" placeholder="搜索书名或作者" autocomplete="off">
+    </div>
+    <div class="header-actions">
+      <span id="count" aria-live="polite"></span>
+      <label class="btn ghost pick pick-all" title="选中当前筛选出的全部书籍"><input type="checkbox" id="pickAll"><span class="box"></span>全选</label>
+      <button class="btn primary local-only" id="refreshBtn" title="重新扫描书籍目录">重新扫描</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="kicker">
+    <span class="rule"></span>
+    <span class="no">No.01</span>
+    <span class="tag">书籍藏书</span>
+    <span class="rule r"></span>
+  </div>
+  <h2>书籍<em>预览</em></h2>
+  <div class="hero-rule"></div>
+  <p>垂类深耕 · 好评拓展 —— 在这里检索、筛选你的整个藏书</p>
+  <div class="stats">
+    <div class="stat"><div class="num" id="statTotal">–</div><div class="lbl">藏书总数</div></div>
+    <div class="stat"><div class="num" id="statLeft">–</div><div class="lbl" id="statLeftLbl">垂类书籍</div></div>
+    <div class="stat"><div class="num" id="statRight">–</div><div class="lbl" id="statRightLbl">拓展好评书籍</div></div>
+  </div>
+</section>
+
+<div class="layout">
+  <aside>
+    <div class="side-head">
+      <h2>筛选</h2>
+      <button id="clearFilters">清空</button>
+    </div>
+    <div id="filters"><div class="filters-loading" style="padding:20px 0;">载入中…</div></div>
+  </aside>
+
+  <main>
+    <div id="grid"></div>
+    <div id="empty"><div class="big">◎</div><div id="emptyText" role="status" aria-live="polite">没有找到匹配的书籍</div><button class="btn ghost" id="emptyReset" hidden>查看全部书籍</button></div>
+    <div id="loading">正在载入书籍…</div>
+  </main>
+</div>
+
+<button id="toTop" title="回到顶部">↑</button>
+
+<div class="modal-mask" id="modalMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <button class="m-close" id="modalClose" title="关闭">✕</button>
+    <div class="m-idx" id="mIdx"></div>
+    <h3 class="m-title" id="mTitle"></h3>
+    <div class="m-author" id="mAuthor"></div>
+    <div class="m-sec"><span class="fno">01</span>内容简介</div>
+    <div class="m-summary" id="mSummary"></div>
+    <div class="m-sec"><span class="fno">02</span>分类信息</div>
+    <div class="m-crumbs" id="mCrumbs"></div>
+    <div class="m-foot">
+      <button class="m-download" id="mDownload">下载书籍 ↓</button>
+      <div class="m-download-status" id="mDownloadStatus">当前仅提供书籍预览，下载暂未开放。</div>
+      <div class="m-path" id="mPath"></div>
+    </div>
+  </div>
+</div>
+
+<div class="sel-bar" id="selBar">
+  <div class="sel-info">已选 <b id="selCount">0</b> 本<span id="selMeta"> · 共约 <span id="selSize">0 MB</span></span></div>
+  <button class="btn ghost" id="selInvert" title="在当前筛选结果里反选">反选</button>
+  <button class="btn ghost" id="selClear">清空选择</button>
+  <button class="btn ghost static-only" id="selExport" title="导出清单">导出清单</button>
+  <button class="btn ghost" id="selCancel" hidden>取消</button>
+  <button class="btn primary" id="selDownload">下载选中 ↓</button>
+</div>
+
+<script src="./filter_state.js"></script>
+<script>
+let allBooks = [];
+let filtersData = { collections: {}, formats: [] };
+
+// 纯静态部署（Cloudflare Pages）没有 /api，启动时探一次就定下走哪条路。
+// 同一份 index.html 因此本地和线上都能跑，不用维护两份。
+let staticMode = false;
+let siteConfig = { downloadBase: "" };
+
+const sel = {
+  collections: new Set(), groups: new Set(), categories: new Set(),
+  subcategories: new Set(), formats: new Set(), keyword: "",
+};
+
+// 批量下载：已勾选书籍的 path。跨筛选保留，筛掉的也不丢。
+const picked = new Set();
+let shownBooks = [];
+
+const $ = (s) => document.querySelector(s);
+const grid = $("#grid"), emptyEl = $("#empty"), loadingEl = $("#loading");
+
+// 404 和「返回的不是 JSON」都要算失败：有些静态托管会拿 HTML 兜底未知路径
+function getJSON(url) {
+  return fetch(url).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  });
+}
+
+async function loadAll() {
+  loadingEl.style.display = "block";
+  let booksRes, filtersRes;
+  try {
+    [booksRes, filtersRes] = await Promise.all([
+      getJSON("/api/books"), getJSON("/api/filters"),
+    ]);
+  } catch {
+    staticMode = true;
+    document.body.classList.add("static-mode");
+    [booksRes, filtersRes, siteConfig] = await Promise.all([
+      getJSON("./books.json"), getJSON("./filters.json"),
+      getJSON("./config.json").catch(() => siteConfig),   // 配置丢了也别把整站拖垮
+    ]);
+  }
+  allBooks = booksRes.books;
+  filtersData = filtersRes;
+  // 重新扫描后书可能没了，别让选中集合留着死路径
+  const alive = new Set(allBooks.map(b => b.path));
+  for (const p of [...picked]) if (!alive.has(p)) picked.delete(p);
+  loadingEl.style.display = "none";
+  syncDownloadAvailability();
+  renderStats();
+  renderFilters();
+  applyFilters();
+}
+
+function renderStats() {
+  const colls = Object.keys(filtersData.collections);
+  animateNum($("#statTotal"), allBooks.length);
+  animateNum($("#statLeft"), countOf(b => b.collection === colls[0]));
+  animateNum($("#statRight"), countOf(b => b.collection === colls[1]));
+  $("#statLeftLbl").textContent = colls[0] || "—";
+  $("#statRightLbl").textContent = colls[1] || "—";
+}
+function animateNum(el, target) {
+  if (!el) return;
+  const t0 = performance.now(), dur = 900;
+  (function tick(t) {
+    const p = Math.min((t - t0) / dur, 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+// 键统一带 collection 前缀，避免不同集合下同名分类串扰。
+const gk = BookFilterState.groupKey;
+const ck = BookFilterState.categoryKey;
+const sk = BookFilterState.subcategoryKey;
+
+function appendFilterHint(box, text) {
+  const hint = document.createElement("p");
+  hint.className = "filter-hint";
+  hint.textContent = text;
+  box.appendChild(hint);
+}
+
+function renderFilters() {
+  const box = $("#filters");
+  box.innerHTML = "";
+  const colls = Object.keys(filtersData.collections);
+
+  // 第一级：默认“全部”，也可缩小到某个书库。
+  const tWrap = document.createElement("div");
+  tWrap.className = "filter-group";
+  tWrap.innerHTML = '<div class="fg-title"><span class="fno">01</span>书库类型</div>';
+  const tChips = document.createElement("div");
+  tChips.className = "chips stack";
+  tChips.appendChild(makeChip("全部", allBooks.length, !sel.collections.size, () => {
+    BookFilterState.selectAll(sel);
+    renderFilters(); applyFilters();
+  }, "all", "all"));
+  for (const coll of colls) {
+    const n = countOf(b => b.collection === coll);
+    tChips.appendChild(makeChip(coll, n, sel.collections.has(coll), () => {
+      BookFilterState.selectCollection(sel, coll);
+      renderFilters(); applyFilters();
+    }, coll, "coll"));
+  }
+  tWrap.appendChild(tChips);
+  box.appendChild(tWrap);
+
+  const selectedCollection = sel.collections.size === 1 ? [...sel.collections][0] : null;
+
+  // 第二级始终显示；选中一级时只统计该书库，否则统计全部书库。
+  const gWrap = document.createElement("div");
+  gWrap.className = "filter-group";
+  gWrap.innerHTML = '<div class="fg-title"><span class="fno">02</span>阅读方向</div>';
+  const gChips = document.createElement("div");
+  gChips.className = "chips direction-grid";
+  const scopeBooks = allBooks.filter(b => !selectedCollection || b.collection === selectedCollection);
+  const groupNames = [...new Set(scopeBooks.map(b => b.group).filter(Boolean))];
+  for (const group of groupNames) {
+    const groupKeys = [...new Set(scopeBooks.filter(b => b.group === group).map(b => gk(b.collection, b.group)))];
+    const on = groupKeys.length > 0 && groupKeys.every(key => sel.groups.has(key)) && sel.groups.size === groupKeys.length;
+    gChips.appendChild(makeChip(group, scopeBooks.filter(b => b.group === group).length, on, () => {
+        BookFilterState.selectGroups(sel, groupKeys);
+        renderFilters(); applyFilters();
+      }, group, "group"));
+  }
+  if (!groupNames.length) appendFilterHint(gWrap, "该书库暂无阅读方向。");
+  gWrap.appendChild(gChips);
+  box.appendChild(gWrap);
+
+  // 第三级标题始终显示；具体分类按当前左右手切换。
+  const cWrap = document.createElement("div");
+  cWrap.className = "filter-group";
+  const selectedGroupNames = [...new Set([...sel.groups].map(key => key.split("|")[1]).filter(Boolean))];
+  const selectedGroup = selectedGroupNames.length === 1 ? selectedGroupNames[0] : null;
+  cWrap.innerHTML = `<div class="fg-title"><span class="fno">03</span>${selectedGroup ? esc(selectedGroup) + "分类" : "具体分类"}</div>`;
+  if (!selectedGroup) {
+    appendFilterHint(cWrap, scopeBooks.length
+      ? "请选择左手书籍或右手书籍，具体分类会随之切换。"
+      : "该书库暂无具体分类。");
+    box.appendChild(cWrap);
+    return;
+  }
+  const catList = document.createElement("div");
+  catList.className = "cat-list";
+  const groupBooks = scopeBooks.filter(b => b.group === selectedGroup);
+  const categoryNames = [...new Set(groupBooks.map(b => b.category).filter(Boolean))];
+  for (const cat of categoryNames) {
+    const categoryBooks = groupBooks.filter(b => b.category === cat);
+    const categoryKeys = [...new Set(categoryBooks.map(b => ck(b.collection, b.group, b.category)))];
+    catList.appendChild(makeOpt(cat, categoryKeys.length > 0 && categoryKeys.every(key => sel.categories.has(key)), (on) => {
+      for (const key of categoryKeys) on ? sel.categories.add(key) : sel.categories.delete(key);
+      applyFilters();
+    }, categoryBooks.length));
+    const subs = [...new Set(categoryBooks.map(b => b.subcategory).filter(Boolean))];
+    if (subs.length) {
+      const det = document.createElement("details");
+      det.className = "subcat";
+      const sum = document.createElement("summary");
+      sum.textContent = "子分类 · " + subs.length;
+      det.appendChild(sum);
+      for (const sub of subs) {
+        const subBooks = categoryBooks.filter(b => b.subcategory === sub);
+        const subKeys = [...new Set(subBooks.map(b => sk(b.collection, b.group, b.category, b.subcategory || "")))];
+        det.appendChild(makeOpt(sub, subKeys.length > 0 && subKeys.every(key => sel.subcategories.has(key)), (on) => {
+          for (const key of subKeys) on ? sel.subcategories.add(key) : sel.subcategories.delete(key);
+          applyFilters();
+        }, subBooks.length));
+      }
+      catList.appendChild(det);
+    }
+  }
+  cWrap.appendChild(catList);
+  box.appendChild(cWrap);
+}
+
+function makeChip(label, count, on, onChange, group, kind) {
+  const el = document.createElement("button");
+  el.className = "chip" + (on ? " on" : "");
+  if (group) el.dataset.group = group;
+  if (kind) el.dataset.kind = kind;
+  el.setAttribute("aria-pressed", on ? "true" : "false");
+  el.innerHTML = `<span class="lab">${esc(label)}</span><span class="n">${count}</span>`;
+  el.addEventListener("click", () => onChange(!on));
+  return el;
+}
+
+function makeOpt(label, checked, onChange, count) {
+  const lab = document.createElement("label");
+  lab.className = "opt";
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.checked = checked;
+  cb.addEventListener("change", () => onChange(cb.checked));
+  const box = document.createElement("span"); box.className = "box";
+  const txt = document.createElement("span"); txt.className = "lab"; txt.textContent = label;
+  lab.appendChild(cb); lab.appendChild(box); lab.appendChild(txt);
+  if (typeof count === "number") {
+    const n = document.createElement("span"); n.className = "n"; n.textContent = count;
+    lab.appendChild(n);
+  }
+  return lab;
+}
+
+function countOf(fn) { return allBooks.reduce((a, b) => a + (fn(b) ? 1 : 0), 0); }
+
+function applyFilters() {
+  const kws = sel.keyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const out = BookFilterState.isReady(sel) ? allBooks.filter(b => {
+    if (kws.length) {
+      const hay = ((b.title || "") + " " + (b.author || "")).toLowerCase();
+      if (!kws.every(k => hay.includes(k))) return false;
+    }
+    return BookFilterState.matches(sel, b);
+  }) : [];
+
+  // 空态文案：若所选集合本身为空（如“拓展好评书籍”尚无书），提示“待添加”
+  const emptyText = $("#emptyText");
+  const emptyReset = $("#emptyReset");
+  const selectedEmptyColl = [...sel.collections].some(c => countOf(b => b.collection === c) === 0);
+  const emptyCollectionState = out.length === 0 && selectedEmptyColl
+    && !sel.categories.size && !sel.subcategories.size;
+  emptyReset.hidden = !emptyCollectionState;
+  if (emptyCollectionState) {
+    emptyText.textContent = "该书库暂时还没有入库书籍";
+  } else if (sel.collections.size && !sel.groups.size) {
+    emptyText.textContent = "请再选择左手书籍或右手书籍";
+  } else {
+    emptyText.textContent = "没有找到匹配的书籍";
+  }
+
+  shownBooks = out;
+  renderCards(out);
+  updateSelUI();
+  $("#count").textContent = `${out.length} / ${allBooks.length}`;
+}
+
+function renderCards(list) {
+  grid.innerHTML = "";
+  if (!list.length) { emptyEl.style.display = "block"; return; }
+  emptyEl.style.display = "none";
+  const frag = document.createDocumentFragment();
+  list.forEach((b, i) => {
+    const card = document.createElement("div");
+    const on = picked.has(b.path);
+    card.className = "card " + (b.cover ? "has-cover" : "no-cover") + (on ? " picked" : "");
+    card.dataset.path = b.path;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `查看《${b.title || "未命名"}》详情`);
+    card.tabIndex = 0;
+    card.style.animationDelay = Math.min(i, 24) * 20 + "ms";
+    const idx = "A" + (i + 1);
+    // 封面是相对路径（covers/xx.jpg），API 模式和静态模式同目录都能取到；
+    // alt 留空：书名就在卡片文字里，封面属于装饰，别让读屏器念两遍
+    const coverHtml = b.cover
+      ? `<img class="cover-img" loading="lazy" decoding="async" src="${encodeURI(b.cover)}" alt=""><div class="scrim"></div>`
+      : "";
+    // 卡片上只有 idx/书名/作者/梗概（收在底部容器），分类标签只在详情弹窗里
+    card.innerHTML = coverHtml + `
+      <label class="pick" title="选择这本书"><input type="checkbox" aria-label="选择《${esc(b.title || "未命名")}》"${on ? " checked" : ""}><span class="box"></span></label>
+      <div class="card-text">
+        <div class="idx">${idx}</div>
+        <div class="title" title="${esc(b.title)}">${esc(b.title)}</div>
+        <div class="author" title="${esc(b.author || "")}">${esc(b.author || "佚名")}</div>
+        <div class="summary ${b.summary ? "" : "empty"}">${b.summary ? esc(b.summary) : "暂无简介"}</div>
+      </div>`;
+    // 封面加载失败（文件被删/还没生成）：摘掉图和蒙版，回退成渐变文字卡
+    const coverImg = card.querySelector(".cover-img");
+    if (coverImg) {
+      coverImg.addEventListener("error", () => {
+        coverImg.remove();
+        card.querySelector(".scrim")?.remove();
+        card.classList.remove("has-cover");
+        card.classList.add("no-cover");
+      });
+    }
+    card.addEventListener("click", () => openModal(b, idx));
+    card.addEventListener("keydown", (e) => {
+      if (e.target !== card || !(e.key === "Enter" || e.key === " ")) return;
+      e.preventDefault();
+      openModal(b, idx);
+    });
+    const pick = card.querySelector(".pick");
+    pick.addEventListener("click", (e) => e.stopPropagation());   // 勾选不弹窗
+    pick.querySelector("input").addEventListener("change", (e) => {
+      e.target.checked ? picked.add(b.path) : picked.delete(b.path);
+      card.classList.toggle("picked", e.target.checked);
+      updateSelUI();
+    });
+    frag.appendChild(card);
+  });
+  grid.appendChild(frag);
+}
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/* ---------- 批量选择与下载 ---------- */
+function fmtSize(bytes) {
+  const mb = bytes / 1048576;
+  return mb >= 1024 ? (mb / 1024).toFixed(2) + " GB" : mb.toFixed(1) + " MB";
+}
+
+function updateSelUI() {
+  const n = picked.size;
+  $("#selCount").textContent = n;
+  const namesOnly = staticMode && !siteConfig.downloadBase;
+  $("#selMeta").hidden = namesOnly;
+  $("#selSize").textContent = fmtSize(
+    allBooks.reduce((a, b) => a + (picked.has(b.path) ? (b.size || 0) : 0), 0));
+  $("#selBar").classList.toggle("show", n > 0);
+  // 全选态只看当前筛选结果：全中才算勾上，选了一部分显示半选
+  const hit = shownBooks.reduce((a, b) => a + (picked.has(b.path) ? 1 : 0), 0);
+  const box = $("#pickAll");
+  box.checked = shownBooks.length > 0 && hit === shownBooks.length;
+  box.indeterminate = hit > 0 && hit < shownBooks.length;
+}
+
+// 只改已渲染卡片的勾选态，不整片重渲染，免得入场动画重放
+function syncCardMarks() {
+  grid.querySelectorAll(".card").forEach(card => {
+    const on = picked.has(card.dataset.path);
+    card.classList.toggle("picked", on);
+    card.querySelector(".pick input").checked = on;
+  });
+  updateSelUI();
+}
+
+// 库内相对路径 -> 下载地址。静态模式拼 downloadBase：分隔符统一成 /，
+// 再逐段编码，书名里的 + 才不会在 URL 里被当成空格。
+function bookURL(path) {
+  if (!staticMode) return "/api/download?path=" + encodeURIComponent(path);
+  const segs = String(path).split(/[\\/]/).filter(Boolean).map(encodeURIComponent);
+  return (siteConfig.downloadBase || "").replace(/\/+$/, "") + "/" + segs.join("/");
+}
+
+function syncDownloadAvailability() {
+  const disabled = staticMode && !siteConfig.downloadBase;
+  document.body.classList.toggle("downloads-disabled", disabled);
+  const exportBtn = $("#selExport");
+  exportBtn.textContent = disabled ? "导出书名清单" : "导出清单";
+  exportBtn.title = disabled ? "导出已选书籍的书名（TXT）" : "导出直链清单，喂给 IDM / aria2 / 迅雷";
+}
+
+function downloadReady() {
+  return !(staticMode && !siteConfig.downloadBase);
+}
+
+function saveAs(href, name) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function triggerDownload(path) {
+  saveAs(bookURL(path), "");    // 文件名交给服务端的 Content-Disposition
+}
+
+// 今天的日期，YYYY-MM-DD（sv 区域就是这个格式）
+const today = () => new Date().toLocaleDateString("sv");
+
+$("#pickAll").addEventListener("change", (e) => {
+  for (const b of shownBooks) e.target.checked ? picked.add(b.path) : picked.delete(b.path);
+  syncCardMarks();
+});
+$("#selInvert").addEventListener("click", () => {
+  for (const b of shownBooks) picked.has(b.path) ? picked.delete(b.path) : picked.add(b.path);
+  syncCardMarks();
+});
+$("#selClear").addEventListener("click", () => { picked.clear(); syncCardMarks(); });
+
+const BATCH_GAP_MS = 400;       // 每本之间的间隔：连发太快浏览器会把后面的直接吞掉
+const BATCH_CONFIRM_AT = 10;    // 超过这个数先问一声，顺便提醒浏览器的多文件拦截
+let batchAbort = false;
+
+// 静态模式没有服务端打包，只能一本本触发。返回收尾时按钮该显示的字。
+async function downloadOneByOne(paths, btn) {
+  if (paths.length > BATCH_CONFIRM_AT && !confirm(
+      `要依次下载 ${paths.length} 本书。\n浏览器可能会问你「是否允许下载多个文件」，点允许即可。\n` +
+      `本数多的话更推荐「导出清单」，拿去喂 IDM / aria2 / 迅雷。\n\n继续？`))
+    return "下载选中 ↓";
+  batchAbort = false;
+  $("#selCancel").hidden = false;
+  try {
+    for (let i = 0; i < paths.length; i++) {
+      if (batchAbort) return `已取消 ${i} / ${paths.length}`;
+      btn.textContent = `下载中 ${i + 1} / ${paths.length}`;
+      triggerDownload(paths[i]);
+      await new Promise(r => setTimeout(r, BATCH_GAP_MS));
+    }
+  } finally {
+    $("#selCancel").hidden = true;
+  }
+  return "已开始下载 ✓";
+}
+
+$("#selCancel").addEventListener("click", () => { batchAbort = true; });
+
+$("#selDownload").addEventListener("click", async () => {
+  const paths = [...picked];
+  if (!paths.length || !downloadReady()) return;
+  const btn = $("#selDownload");
+  btn.disabled = true;
+  try {
+    if (paths.length === 1) {
+      triggerDownload(paths[0]);        // 只有一本就别打包了，直接下
+      btn.textContent = "已开始下载 ✓";
+    } else if (staticMode) {
+      btn.textContent = await downloadOneByOne(paths, btn);
+    } else {
+      btn.textContent = "打包中…";
+      const r = await fetch("/api/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      if (!r.ok) throw new Error(r.status);
+      const url = URL.createObjectURL(await r.blob());
+      saveAs(url, "书籍_" + today() + ".zip");
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      btn.textContent = "已开始下载 ✓";
+    }
+  } catch {
+    btn.textContent = "打包失败，再点一次";
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = "下载选中 ↓"; }, 2000);
+});
+
+// 静态站点没配下载源时导出书名；配了下载源时仍可导出直链给下载器。
+$("#selExport").addEventListener("click", () => {
+  if (!picked.size) return;
+  const selectedBooks = allBooks.filter(b => picked.has(b.path));
+  const namesOnly = staticMode && !siteConfig.downloadBase;
+  const lines = namesOnly
+    ? selectedBooks.map(b => b.title || "未命名")
+    : selectedBooks.map(b => bookURL(b.path));
+  const url = URL.createObjectURL(
+    new Blob([lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" }));
+  saveAs(url, namesOnly ? "书名清单_" + today() + ".txt" : "下载清单_" + today() + ".txt");
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  const btn = $("#selExport");
+  btn.textContent = `已导出 ${lines.length} 条 ✓`;
+  setTimeout(() => { btn.textContent = namesOnly ? "导出书名清单" : "导出清单"; }, 2000);
+});
+
+/* ---------- 书籍详情弹窗 ---------- */
+const modalMask = $("#modalMask");
+let modalBook = null;
+let modalReturnFocus = null;
+
+function openModal(b, idx) {
+  modalReturnFocus = document.activeElement;
+  modalBook = b;
+  $("#mIdx").textContent = idx || "";
+  $("#mTitle").textContent = b.title || "未命名";
+  $("#mAuthor").textContent = b.author || "佚名";
+
+  const sumEl = $("#mSummary");
+  if (b.summary) {
+    sumEl.textContent = b.summary;
+    sumEl.classList.remove("empty");
+  } else {
+    sumEl.textContent = "这本书还没有生成梗概。";
+    sumEl.classList.add("empty");
+  }
+
+  const crumbEls = [b.collection, b.group, b.category, b.subcategory].filter(Boolean);
+  $("#mCrumbs").innerHTML =
+    crumbEls.map(c => `<span class="tag">${esc(c)}</span>`).join("") +
+    `<span class="tag fmt">${esc(b.format)}</span>`;
+
+  $("#mPath").textContent = `${String(b.format || "PDF").toUpperCase()} · ${fmtSize(b.size || 0)}`;
+  modalMask.classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("#modalClose").focus();
+}
+
+function closeModal() {
+  modalMask.classList.remove("show");
+  document.body.style.overflow = "";
+  modalBook = null;
+  if (modalReturnFocus && typeof modalReturnFocus.focus === "function") modalReturnFocus.focus();
+  modalReturnFocus = null;
+}
+
+$("#modalClose").addEventListener("click", closeModal);
+modalMask.addEventListener("click", (e) => { if (e.target === modalMask) closeModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalMask.classList.contains("show")) closeModal(); });
+
+$("#mDownload").addEventListener("click", () => {
+  if (!modalBook || !downloadReady()) return;
+  const btn = $("#mDownload");
+  triggerDownload(modalBook.path);
+  btn.textContent = "已开始下载 ✓";
+  setTimeout(() => { btn.textContent = "下载书籍 ↓"; }, 1500);
+});
+
+let debounceTimer = null;
+$("#search").addEventListener("input", (e) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { sel.keyword = e.target.value; applyFilters(); }, 150);
+});
+$("#clearFilters").addEventListener("click", () => {
+  sel.collections.clear(); sel.groups.clear(); sel.categories.clear();
+  sel.subcategories.clear(); sel.formats.clear();
+  $("#search").value = ""; sel.keyword = "";
+  renderFilters(); applyFilters();
+});
+$("#emptyReset").addEventListener("click", () => {
+  BookFilterState.selectAll(sel);
+  $("#search").value = ""; sel.keyword = "";
+  renderFilters(); applyFilters();
+});
+$("#refreshBtn").addEventListener("click", async () => {
+  const btn = $("#refreshBtn");
+  btn.disabled = true; btn.textContent = "扫描中…";
+  try {
+    await fetch("/api/refresh", { method: "POST" });
+    await loadAll();
+  } finally {
+    btn.disabled = false; btn.textContent = "重新扫描";
+  }
+});
+
+const toTop = $("#toTop");
+window.addEventListener("scroll", () => {
+  toTop.classList.toggle("show", window.scrollY > 600);
+}, { passive: true });
+toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+
+loadAll();
+</script>
+</body>
+</html>
