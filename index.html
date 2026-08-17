@@ -651,19 +651,19 @@
   html, body, body * { cursor: none !important; }
   #grabHand {
     position: fixed; left: 0; top: 0; z-index: 300;   /* 压过开场(200)、详情弹窗(100)，手永远在最上层 */
-    width: 44px; height: 44px;
+    width: 22px; height: 22px;
     pointer-events: none;
     opacity: 0; transition: opacity .18s var(--ease);
     will-change: transform;
   }
   #grabHand.show { opacity: 1; }
   /* 内层负责手势，外层只管跟着鼠标平移——两者分开，平移即时、手势有过渡。
-     像素手不旋转、不缩放（非整数变换会糊掉锐利像素边），手势只靠「张嘴→握拳」的点阵切换 + 整数下压。 */
+     平滑手套小手（静态 SVG，白芯深边描线），手势靠「张开→握拳」两path切换 + 整数下压。 */
   #grabHand .gh-in {
-    width: 100%; height: 100%; margin: -10px 0 0 -11px;   /* 让掌心/指尖落在热点 */
+    width: 100%; height: 100%; margin: -5px 0 0 -6px;   /* 让掌心/指尖落在热点 */
     transform: none;
     transition: transform .12s var(--ease);
-    filter: drop-shadow(0 3px 5px rgba(30,18,4,.4));
+    filter: drop-shadow(0 2px 3px rgba(30,18,4,.4));
   }
   #grabHand svg { display: block; width: 100%; height: 100%; overflow: visible; }
   /* 张开 / 抓握两张手形切换 */
@@ -671,9 +671,12 @@
   #grabHand .p-grip { opacity: 0; }
   #grabHand.grab .p-open { opacity: 0; }
   #grabHand.grab .p-grip { opacity: 1; }
-  /* 按下鼠标的瞬间：整手垂直下压 2px 使力（整数位移，保住像素锐利） */
-  #grabHand.grab .gh-in { transform: translateY(2px); }
+  /* 按下鼠标的瞬间：整手垂直下压 1px 使力 */
+  #grabHand.grab .gh-in { transform: translateY(1px); }
   @media (hover: none), (pointer: coarse) { #grabHand { display: none; } html, body, body * { cursor: auto !important; } }
+
+  /* 磁吸按钮：靠近被吸过去一点。用独立的 CSS translate 属性实现，与元素原有 transform 叠加不打架。 */
+  .magnetic { transition: translate .22s var(--ease); }
 
   /* ---------- 书房灯光 + 暗角：让整面书墙有纵深 ----------
      一盏银行家灯从视口顶部垂下暖光，四周与底部缓缓压暗。层 fixed 不动，
@@ -1038,10 +1041,24 @@
 <!-- 抓手光标：一只跟着鼠标的手。平时张开，按下鼠标就握紧成拳 -->
 <div id="grabHand" aria-hidden="true">
   <div class="gh-in">
-    <svg viewBox="0 0 48 48" fill="none">
-      <!-- 像素复古手（D 款）：8-bit 点阵，黑边白芯。点阵数据与生成见 JS PIX_OPEN/PIX_GRIP -->
-      <g class="p-open" shape-rendering="crispEdges"></g>
-      <g class="p-grip" shape-rendering="crispEdges"></g>
+    <svg viewBox="0 0 32 32" fill="none">
+      <!-- 平滑手套小手：白芯 #FFF + 深边 #221708 描线。张开 / 握拳两 path 切换 -->
+      <g class="p-open" fill="#FFFFFF" stroke="#221708" stroke-width="1.6" stroke-linejoin="round">
+        <rect x="10.3" y="4.5" width="3" height="9" rx="1.5"/>
+        <rect x="13.8" y="3" width="3" height="10.5" rx="1.5"/>
+        <rect x="17.3" y="4" width="3" height="9.5" rx="1.5"/>
+        <rect x="20.8" y="6.5" width="2.7" height="7" rx="1.35"/>
+        <rect x="4.5" y="12" width="7.5" height="3.4" rx="1.7" transform="rotate(-32 8 13.5)"/>
+        <rect x="9" y="12" width="14.5" height="14" rx="6.5"/>
+      </g>
+      <g class="p-grip" fill="#FFFFFF" stroke="#221708" stroke-width="1.6" stroke-linejoin="round">
+        <rect x="10.3" y="8.5" width="3" height="6" rx="1.5"/>
+        <rect x="13.8" y="8" width="3" height="6.5" rx="1.5"/>
+        <rect x="17.3" y="8.5" width="3" height="6" rx="1.5"/>
+        <rect x="20.8" y="9.5" width="2.7" height="5.5" rx="1.35"/>
+        <rect x="9" y="13" width="14.5" height="12.5" rx="6"/>
+        <rect x="9.5" y="13" width="12" height="3.6" rx="1.8"/>
+      </g>
     </svg>
   </div>
 </div>
@@ -1139,6 +1156,36 @@ function getJSON(url) {
   });
 }
 
+/* 开场动画播放期间（约 2.4s）后台预载全部封面：先载当前这一屏、再补齐其余。
+   new Image() 只灌 HTTP 缓存不上屏，分批 + requestIdleCallback 让出主线程，不抢开场帧。
+   以后书再多，用户第一次点开也不会卡顿或看到空白封面。 */
+let coversPreloaded = false;
+function preloadCovers() {
+  if (coversPreloaded) return;
+  coversPreloaded = true;
+  const seen = new Set();
+  const urls = [];
+  const push = (b) => {
+    if (b.cover && !seen.has(b.cover)) { seen.add(b.cover); urls.push(ASSET_PREFIX + encodeURI(b.cover)); }
+  };
+  (shownBooks.length ? shownBooks : allBooks).forEach(push);   // 当前这屏优先
+  allBooks.forEach(push);                                       // 其余全部补齐
+  if (!urls.length) return;
+  let i = 0;
+  const BATCH = 8;
+  const schedule = window.requestIdleCallback
+    ? (fn) => requestIdleCallback(fn, { timeout: 300 })
+    : (fn) => setTimeout(fn, 50);
+  (function pump() {
+    for (let n = 0; n < BATCH && i < urls.length; n++, i++) {
+      const im = new Image();
+      im.decoding = "async";
+      im.src = urls[i];
+    }
+    if (i < urls.length) schedule(pump);
+  })();
+}
+
 async function loadAll() {
   loadingEl.style.display = "block";
   let booksRes, filtersRes;
@@ -1164,6 +1211,7 @@ async function loadAll() {
   renderStats();
   renderFilters();
   applyFilters();
+  preloadCovers();   // 开场动画正播，后台把封面全灌进缓存
 }
 
 // 首次进入默认选中「右手书籍」这一阅读方向，让书架一进来就有内容、且落在主推的一侧。
@@ -1251,6 +1299,7 @@ function renderFilters() {
   if (!groupNames.length) appendFilterHint(gWrap, "该书库暂无阅读方向。");
   gWrap.appendChild(gChips);
   box.appendChild(gWrap);
+  bindMagnetic(box);   // chip 每次重建后重绑磁吸（WeakSet 去重）
 
   const cWrap = document.createElement("div");
   cWrap.className = "filter-group";
@@ -1384,55 +1433,37 @@ function hash01(n) {
 }
 
 function renderShelves(list) {
-  grid.innerHTML = "";
   bookByPath.clear();
   hidePreview();   // 书架重排后，悬停的猎物已经没了
-  if (!list.length) { emptyEl.style.display = "block"; return; }
+  if (!list.length) { grid.innerHTML = ""; emptyEl.style.display = "block"; return; }
   emptyEl.style.display = "none";
 
   const perRow = booksPerRow();
   lastPerRow = perRow;          // 记下当前每行本数，resize 时据此判断要不要重切层板
-  const frag = document.createDocumentFragment();
   let idx = 0;
 
+  // 整面书架拼成一个大字符串，一次性写进 grid——比逐本 createElement + 挂监听器快一个数量级，
+  // 点左侧筛选时不再卡住鼠标（2400 本逐本建 DOM 实测 >1s，一次性 innerHTML 仅几十 ms）。
+  let html = "";
   for (const g of groupByCategory(list)) {
-    const shelf = document.createElement("section");
-    shelf.className = "shelf";
-
-    const plate = document.createElement("div");
-    plate.className = "plate";
     const crumb = [g.collection, g.group].filter(Boolean).join(" · ");
-    plate.innerHTML =
-      `<span class="p-crumb">${esc(crumb)}</span>` +
+    html += `<section class="shelf">` +
+      `<div class="plate"><span class="p-crumb">${esc(crumb)}</span>` +
       `<span class="p-name">${esc(g.category || "未分类")}</span>` +
-      `<span class="p-count">${g.books.length} 本</span>`;
-    shelf.appendChild(plate);
-
-    const caseEl = document.createElement("div");
-    caseEl.className = "case";
-
-    // 把这一格的书切成每行 perRow 本，每行一块木层板——这才是一格真书架。
+      `<span class="p-count">${g.books.length} 本</span></div>` +
+      `<div class="case">`;
     for (let start = 0; start < g.books.length; start += perRow) {
       const rowBooks = g.books.slice(start, start + perRow);
-      const board = document.createElement("div");
-      board.className = "board";
-      const row = document.createElement("div");
-      row.className = "row";
+      html += `<div class="board"><div class="row">`;
       for (const b of rowBooks) {
         idx += 1;
-        row.appendChild(buildBook(b, "A" + idx));
+        html += buildBookHTML(b, "A" + idx);
       }
-      board.appendChild(row);
-      const plank = document.createElement("div");
-      plank.className = "plank";
-      board.appendChild(plank);
-      caseEl.appendChild(board);
+      html += `</div><div class="plank"></div></div>`;
     }
-
-    shelf.appendChild(caseEl);
-    frag.appendChild(shelf);
+    html += `</div></section>`;
   }
-  grid.appendChild(frag);
+  grid.innerHTML = html;
   cacheBookRects();     // 量一次每本书的文档坐标
   armVisible();         // 立即标记视口附近的书为 3D，其余保持平躺
 }
@@ -1485,66 +1516,64 @@ window.addEventListener("resize", () => {    // 尺寸变了坐标全废，重�
   }, 80);
 }, { passive: true });
 
-function buildBook(b, idx) {
+function buildBookHTML(b, idx) {
   const on = picked.has(b.path);
   bookByPath.set(b.path, b);
-  const bk = document.createElement("div");
-  bk.className = "bk " + (b.cover ? "has-cover" : "no-cover") + (on ? " picked" : "");
-  bk.dataset.path = b.path;
-  bk.setAttribute("role", "button");
-  bk.setAttribute("aria-label", `查看《${b.title || "未命名"}》详情`);
-  bk.tabIndex = 0;
-
   // 高度与微倾的确定性变化：像真书架上高矮不齐、偶有斜靠的书
   const h = hash01(b.id || idx.length);
   const heightScale = 0.9 + h * 0.14;                 // 90%–104%
   const lean = (hash01((b.id || 1) * 7.3) - 0.5) * 3;  // -1.5°–1.5°
-  bk.style.height = `calc(var(--book-w) * 1.5 * ${heightScale.toFixed(3)})`;
-  bk.style.setProperty("--lean", lean.toFixed(2) + "deg");
-
-  const coverHtml = b.cover
-    ? `<img loading="lazy" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">`
-    : "";
+  const cls = "bk " + (b.cover ? "has-cover" : "no-cover") + (on ? " picked" : "");
+  const style = `height:calc(var(--book-w) * 1.5 * ${heightScale.toFixed(3)});--lean:${lean.toFixed(2)}deg`;
+  const coverHtml = b.cover ? `<img loading="lazy" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">` : "";
   const firstChar = (b.title || "书").trim().charAt(0) || "书";
   // 真 3D 书：封底 + 左书脊 + 右书口 + 正面封面。离屏时侧面不显示（CSS 控制），只是一张平封面。
-  bk.innerHTML = `
-    <span class="base"></span>
-    <div class="vol">
-      <div class="f f-back"></div>
-      <div class="f f-spine"></div>
-      <div class="f f-pages"></div>
-      <div class="f f-front">
-        ${coverHtml}
-        <span class="stamp">${esc(firstChar)}</span>
-      </div>
-    </div>
-    <label class="pick" title="选择这本书"><input type="checkbox" aria-label="选择《${esc(b.title || "未命名")}》"${on ? " checked" : ""}><span class="box"></span></label>`;
-
-  const coverImg = bk.querySelector(".f-front img");
-  if (coverImg) {
-    if (coverImg.complete && coverImg.naturalWidth) tintBookFromCover(bk, coverImg);
-    else coverImg.addEventListener("load", () => tintBookFromCover(bk, coverImg), { once: true });
-    coverImg.addEventListener("error", () => {
-      coverImg.remove();
-      bk.classList.remove("has-cover");
-      bk.classList.add("no-cover");
-    });
-  }
-  bk.addEventListener("click", () => openModal(b, idx));
-  bk.addEventListener("keydown", (e) => {
-    if (e.target !== bk || !(e.key === "Enter" || e.key === " ")) return;
-    e.preventDefault();
-    openModal(b, idx);
-  });
-  const pick = bk.querySelector(".pick");
-  pick.addEventListener("click", (e) => e.stopPropagation());
-  pick.querySelector("input").addEventListener("change", (e) => {
-    e.target.checked ? picked.add(b.path) : picked.delete(b.path);
-    bk.classList.toggle("picked", e.target.checked);
-    updateSelUI();
-  });
-  return bk;
+  return `<div class="${cls}" data-path="${esc(b.path)}" data-idx="${esc(idx)}" role="button" aria-label="${esc(`查看《${b.title || "未命名"}》详情`)}" tabindex="0" style="${style}">` +
+    `<span class="base"></span><div class="vol">` +
+    `<div class="f f-back"></div><div class="f f-spine"></div><div class="f f-pages"></div>` +
+    `<div class="f f-front">${coverHtml}<span class="stamp">${esc(firstChar)}</span></div></div>` +
+    `<label class="pick" title="选择这本书"><input type="checkbox" aria-label="${esc(`选择《${b.title || "未命名"}》`)}"${on ? " checked" : ""}><span class="box"></span></label></div>`;
 }
+
+/* 事件委托：2400 本书的交互全挂在一个 #grid 上，不再逐本挂监听器。
+   注意 img 的 load/error 不冒泡，必须用捕获阶段（第三参 true）才接得到。 */
+grid.addEventListener("click", (e) => {
+  if (e.target.closest(".pick")) return;                 // 点在勾选框上，不开详情
+  const bk = e.target.closest(".bk");
+  if (!bk) return;
+  const b = bookByPath.get(bk.dataset.path);
+  if (b) openModal(b, bk.dataset.idx);
+});
+grid.addEventListener("keydown", (e) => {
+  const bk = e.target.closest(".bk");
+  if (!bk || e.target !== bk || !(e.key === "Enter" || e.key === " ")) return;
+  e.preventDefault();
+  const b = bookByPath.get(bk.dataset.path);
+  if (b) openModal(b, bk.dataset.idx);
+});
+grid.addEventListener("change", (e) => {
+  const input = e.target.closest(".pick input");
+  if (!input) return;
+  const bk = input.closest(".bk");
+  const b = bk && bookByPath.get(bk.dataset.path);
+  if (!b) return;
+  input.checked ? picked.add(b.path) : picked.delete(b.path);
+  bk.classList.toggle("picked", input.checked);
+  updateSelUI();
+});
+grid.addEventListener("load", (e) => {                    // 封面加载成功 → 取左缘色染书脊
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const bk = img.closest(".bk");
+  if (bk && img.naturalWidth) tintBookFromCover(bk, img);
+}, true);
+grid.addEventListener("error", (e) => {                   // 封面加载失败 → 退成渐变文字卡
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const bk = img.closest(".bk");
+  img.remove();
+  if (bk) { bk.classList.remove("has-cover"); bk.classList.add("no-cover"); }
+}, true);
 
 function esc(s) {
   return String(s == null ? "" : s)
@@ -1699,58 +1728,6 @@ if (canHover) {
   window.addEventListener("scroll", hidePreview, { passive: true });  // 一滚动书就挪位，卡跟着失准
 }
 
-/* ---------- 像素复古手（D 款）点阵数据 ----------
-   '#'=黑边 '#221708'，'o'=白芯。crispEdges 保持锐利像素块。 */
-const PIX_OPEN = [
-"..................",
-".....###..........",
-".....#o#.###......",
-".###.#o#.#o#......",
-".#o#.#o#.#o#.###..",
-".#o#.#o#.#o#.#o#..",
-".#o#.#o#.#o#.#o#..",
-".#o##o##o##o##o#..",
-".#ooooooooooooo#..",
-".#ooooooooooooo#..",
-"..#ooooooooooo#...",
-"..#ooooooooooo#...",
-"..#ooooooooooo#...",
-"...#ooooooooo#....",
-"...#ooooooooo#....",
-"...###########...."];
-const PIX_GRIP = [
-"..................",
-"..................",
-"..###.###.###.....",
-".#oo##oo##oo#.....",
-".#oooooooooo#.....",
-".#ooooooooooo#....",
-".#ooooooooooo#....",
-".#ooooooooooo#....",
-".##ooooooooo##....",
-".#oooooooooooo#...",
-"..#oooooooooo#....",
-"..#oooooooooo#....",
-"...##########....."];
-function pixToRects(map, unit) {
-  const w = Math.max(...map.map(r => r.length));
-  const NS = "http://www.w3.org/2000/svg";
-  const frag = document.createDocumentFragment();
-  map.forEach((row, y) => {
-    row.padEnd(w, ".").split("").forEach((c, x) => {
-      if (c !== "#" && c !== "o") return;
-      const r = document.createElementNS(NS, "rect");
-      r.setAttribute("x", (x * unit).toFixed(2));
-      r.setAttribute("y", (y * unit).toFixed(2));
-      r.setAttribute("width", unit);
-      r.setAttribute("height", unit);
-      r.setAttribute("fill", c === "#" ? "#221708" : "#FFFFFF");
-      frag.appendChild(r);
-    });
-  });
-  return frag;
-}
-
 /* ---------- 开灯揭幕开场 ----------
    全屏先暗 → 同一盏 #lamp 被提到暗场中央点亮 → 暖光绽放照亮书房 → 标题浮出 →
    落幕时灯不消失，而是滑到 hero 大标题正上方、卡进锚点固定下来。
@@ -1820,10 +1797,6 @@ function pixToRects(map, unit) {
    只有在按下鼠标的那一刻才握紧成拳——像把手里的东西攥住，松开又摊开。
    滑出窗口就隐去。 */
 const grabHand = $("#grabHand");
-if (grabHand) {
-  grabHand.querySelector(".p-open").appendChild(pixToRects(PIX_OPEN, 2.6));
-  grabHand.querySelector(".p-grip").appendChild(pixToRects(PIX_GRIP, 2.6));
-}
 if (canHover && grabHand) {
   let handDown = false;   // 鼠标是否正按着：按着就握紧，松开即摊开
   document.addEventListener("mousemove", (e) => {
@@ -1837,6 +1810,29 @@ if (canHover && grabHand) {
   document.addEventListener("mousedown", () => { handDown = true; grabHand.classList.add("grab"); });
   document.addEventListener("mouseup", () => { handDown = false; grabHand.classList.remove("grab"); });
 }
+
+/* ---------- 磁吸按钮 ----------
+   参考 chungsunglau.co.uk：按钮会被鼠标轻轻吸过去一点，离开又弹回。
+   用独立的 CSS translate 属性实现（与元素自身的 transform 叠加，互不干扰）。 */
+const MAGNETIC = ".btn, .chip, .brand, #toTop, .m-close, .m-download, #clearFilters";
+const magnetBound = new WeakSet();
+function bindMagnetic(scope) {
+  if (!canHover) return;
+  (scope || document).querySelectorAll(MAGNETIC).forEach(el => {
+    if (magnetBound.has(el)) return;
+    magnetBound.add(el);
+    el.classList.add("magnetic");
+    el.addEventListener("mousemove", (e) => {
+      const r = el.getBoundingClientRect();
+      const pull = 0.32, cap = 7;
+      const mx = Math.max(-cap, Math.min(cap, (e.clientX - (r.left + r.width / 2)) * pull));
+      const my = Math.max(-cap, Math.min(cap, (e.clientY - (r.top + r.height / 2)) * pull));
+      el.style.translate = `${mx.toFixed(1)}px ${my.toFixed(1)}px`;
+    });
+    el.addEventListener("mouseleave", () => { el.style.translate = "0px 0px"; });
+  });
+}
+bindMagnetic(document);
 
 /* ---------- 批量选择与下载 ---------- */
 function fmtSize(bytes) {
