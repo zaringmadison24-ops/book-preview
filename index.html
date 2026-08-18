@@ -127,7 +127,11 @@
     border: 1px solid rgba(228,201,143,.3); box-shadow: none;
   }
   .btn.ghost:hover { color: #F6EEDA; border-color: var(--brass-hi); transform: translateY(-1px); }
-  .pick-all { display: inline-flex; align-items: center; gap: 9px; user-select: none; }
+  #eighteenBtn.on {
+    background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+    color: #3A2508; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(58, 32, 4, 0.35), 0 1px 0 rgba(255,255,255,.4) inset;
+  }
 
   body.static-mode .local-only,
   body:not(.static-mode) .static-only { display: none; }
@@ -873,21 +877,51 @@
 
   .modal .m-crumbs { display: flex; flex-wrap: wrap; gap: 7px; }
   .modal .m-foot {
-    display: flex; gap: 12px; align-items: center; margin-top: 30px;
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 30px;
     padding-top: 22px; border-top: 1px solid var(--line);
   }
-  .modal .m-download {
+  .modal .m-download, .modal .m-buy-btn {
     height: 44px; padding: 0 24px; border: none; cursor: pointer; border-radius: 999px;
     font-family: inherit; font-size: 14px; font-weight: 600;
     background: linear-gradient(180deg, var(--brass-hi), var(--brass)); color: #3A2508;
     box-shadow: 0 4px 14px rgba(58,32,4,.3), 0 1px 0 rgba(255,255,255,.4) inset;
     transition: all .25s var(--ease); display: inline-flex; align-items: center; gap: 8px;
   }
+  .modal .m-buy-btn {
+    background: linear-gradient(180deg, #4A6756, var(--green)); color: #F5F0E4;
+    box-shadow: 0 4px 14px rgba(30, 40, 32, .28), 0 1px 0 rgba(255,255,255,.18) inset;
+  }
   .modal .m-download:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(58,32,4,.38), 0 1px 0 rgba(255,255,255,.4) inset; }
-  .modal .m-download:disabled { opacity: .55; cursor: default; transform: none; }
+  .modal .m-buy-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(30,40,32,.36), 0 1px 0 rgba(255,255,255,.2) inset; }
+  .modal .m-download:disabled, .modal .m-buy-btn:disabled { opacity: .55; cursor: default; transform: none; }
+  .modal .m-buy-btn[hidden] { display: none; }
   .modal .m-path { font-size: 12px; color: var(--ink-3); word-break: break-all; flex: 1; font-family: var(--mono); line-height: 1.5; }
   .m-download-status { display: none; color: var(--ink-2); font-size: 13px; }
   body.downloads-disabled .m-download-status { display: block; }
+
+  .buy-shot {
+    position: fixed; inset: 0; z-index: 120;
+    background: rgba(18, 12, 6, 0.72);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 28px 18px; gap: 14px;
+    opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+  }
+  .buy-shot.show { opacity: 1; pointer-events: auto; }
+  .buy-shot img {
+    width: min(420px, 92vw); height: auto; border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45);
+    background: #fff;
+  }
+  .buy-shot .buy-shot-hint {
+    margin: 0; color: #F3E7CF; font-size: 13.5px; letter-spacing: .04em;
+  }
+  .buy-shot .buy-shot-close {
+    position: absolute; top: 18px; right: 22px;
+    width: 42px; height: 42px; border: none; border-radius: 50%; cursor: pointer;
+    background: rgba(243,231,207,.16); color: #F3E7CF; font-size: 18px;
+  }
+  .buy-shot .buy-shot-close:hover { background: rgba(243,231,207,.28); }
 
   .tag {
     font-size: 11px; font-weight: 500; padding: 3px 11px; border-radius: 999px;
@@ -975,8 +1009,7 @@
     </div>
     <div class="header-actions">
       <span id="count" aria-live="polite"></span>
-      <label class="btn ghost pick pick-all" title="选中当前筛选出的全部书籍"><input type="checkbox" id="pickAll"><span class="box"></span>全选</label>
-      <button class="btn primary local-only" id="refreshBtn" title="重新扫描书籍目录">重新扫描</button>
+      <button class="btn ghost" id="eighteenBtn" aria-pressed="false" title="懿十八橱窗里、书库已有的书">十八推荐</button>
     </div>
   </div>
 </header>
@@ -1100,6 +1133,7 @@
         <div class="m-crumbs" id="mCrumbs"></div>
         <div class="m-foot">
           <button class="m-download" id="mDownload">下载书籍 ↓</button>
+          <button type="button" class="m-buy-btn" id="mBuy" hidden>购买链接</button>
           <div class="m-download-status" id="mDownloadStatus">当前仅提供书籍预览，下载暂未开放。</div>
           <div class="m-path" id="mPath"></div>
         </div>
@@ -1108,8 +1142,15 @@
   </div>
 </div>
 
+<div class="buy-shot" id="buyShot" aria-hidden="true">
+  <button type="button" class="buy-shot-close" id="buyShotClose" title="关闭">✕</button>
+  <img id="buyShotImg" alt="懿十八的抖音橱窗">
+  <p class="buy-shot-hint">保存图片到相册，打开抖音搜索页扫一扫</p>
+</div>
+
 <div class="sel-bar" id="selBar">
   <div class="sel-info">已选 <b id="selCount">0</b> 本<span id="selMeta"> · 共约 <span id="selSize">0 MB</span></span></div>
+  <button class="btn ghost" id="pickAll" title="选中当前筛选出的全部书籍">全选</button>
   <button class="btn ghost" id="selInvert" title="在当前筛选结果里反选">反选</button>
   <button class="btn ghost" id="selClear">清空选择</button>
   <button class="btn ghost static-only" id="selExport" title="导出清单">导出清单</button>
@@ -1137,6 +1178,54 @@ const sel = {
 
 const picked = new Set();
 let shownBooks = [];
+let eighteenOn = false;
+const EIGHTEEN_BUY_IMG = (location.pathname.includes("/v4/") ? "" : "v4/") + "eighteen-douyin.png";
+
+function eighteenTitle(b) {
+  return String(b && b.title || "").replace(/\s+/g, "");
+}
+const EIGHTEEN_REC = [
+  { id: "内容算法", match: (t, p) => t.startsWith("内容算法") || p.includes("内容算法把内容变成价值的效率系统") },
+  { id: "算法之美", match: (t, p) => t === "算法之美" || /(?:^|[\\/])算法之美 /.test(p) },
+  { id: "深度学习推荐系统", match: (t) => t === "深度学习推荐系统" },
+  { id: "史蒂夫·乔布斯传", match: (t) => t === "史蒂夫·乔布斯传" || t.startsWith("史蒂夫·乔布斯传") },
+  { id: "随机漫步的傻瓜", match: (t) => t === "随机漫步的傻瓜" },
+  { id: "心流", match: (t) => t.startsWith("心流：") || t.startsWith("心流:") },
+  { id: "薛兆丰经济学讲义", match: (t) => t.startsWith("薛兆丰经济学讲义") },
+  { id: "蛤蟆先生去看心理医生", match: (t) => t.startsWith("蛤蟆先生去看心理医生") },
+  { id: "人类群星闪耀时", match: (t) => t === "人类群星闪耀时" },
+  { id: "黑天鹅", match: (t) => t.startsWith("黑天鹅") && !t.includes("语录") },
+  { id: "纳瓦尔宝典", match: (t) => t.startsWith("纳瓦尔宝典") },
+  { id: "思考，快与慢", match: (t) => t.replace(/[，,]/g, "") === "思考快与慢" || t.startsWith("思考，快与慢") || t.startsWith("思考,快与慢") },
+  { id: "底层逻辑", match: (t) => t.startsWith("底层逻辑：看清这个世界的底牌") || t.startsWith("底层逻辑看清这个世界的底牌") },
+  { id: "熵增定律", match: (t) => t === "熵增定律" },
+  { id: "熵减法则", match: (t) => t.startsWith("熵减法则") },
+];
+function isEighteenBook(b) {
+  const t = eighteenTitle(b);
+  const p = String(b && b.path || "");
+  return EIGHTEEN_REC.some(rec => rec.match(t, p));
+}
+function eighteenBooks(list) {
+  const out = [];
+  const used = new Set();
+  for (const rec of EIGHTEEN_REC) {
+    const hit = list.find(b => !used.has(b.path) && rec.match(eighteenTitle(b), String(b.path || "")));
+    if (hit) { used.add(hit.path); out.push(hit); }
+  }
+  return out;
+}
+function syncEighteenBtn() {
+  const btn = $("#eighteenBtn");
+  if (!btn) return;
+  btn.classList.toggle("on", eighteenOn);
+  btn.setAttribute("aria-pressed", eighteenOn ? "true" : "false");
+}
+function leaveEighteen() {
+  if (!eighteenOn) return;
+  eighteenOn = false;
+  syncEighteenBtn();
+}
 let lastPerRow = 0;   // renderShelves 里记录的每行本数，resize 守卫用
 const bookByPath = new Map();   // 当前已渲染的书：path -> 书籍对象，悬停导读卡查它
 
@@ -1266,12 +1355,14 @@ function renderFilters() {
   const tChips = document.createElement("div");
   tChips.className = "chips stack";
   tChips.appendChild(makeChip("全部", allBooks.length, !sel.collections.size, () => {
+    leaveEighteen();
     BookFilterState.selectAll(sel);
     renderFilters(); applyFilters();
   }, "all", "all"));
   for (const coll of colls) {
     const n = countOf(b => b.collection === coll);
     tChips.appendChild(makeChip(coll, n, sel.collections.has(coll), () => {
+      leaveEighteen();
       BookFilterState.selectCollection(sel, coll);
       renderFilters(); applyFilters();
     }, coll, "coll"));
@@ -1292,6 +1383,7 @@ function renderFilters() {
     const groupKeys = [...new Set(scopeBooks.filter(b => b.group === group).map(b => gk(b.collection, b.group)))];
     const on = groupKeys.length > 0 && groupKeys.every(key => sel.groups.has(key)) && sel.groups.size === groupKeys.length;
     gChips.appendChild(makeChip(group, scopeBooks.filter(b => b.group === group).length, on, () => {
+        leaveEighteen();
         BookFilterState.selectGroups(sel, groupKeys);
         renderFilters(); applyFilters();
       }, group, "group"));
@@ -1321,6 +1413,7 @@ function renderFilters() {
     const categoryBooks = groupBooks.filter(b => b.category === cat);
     const categoryKeys = [...new Set(categoryBooks.map(b => ck(b.collection, b.group, b.category)))];
     catList.appendChild(makeOpt(cat, categoryKeys.length > 0 && categoryKeys.every(key => sel.categories.has(key)), (on) => {
+      leaveEighteen();
       for (const key of categoryKeys) on ? sel.categories.add(key) : sel.categories.delete(key);
       applyFilters();
     }, categoryBooks.length));
@@ -1335,6 +1428,7 @@ function renderFilters() {
         const subBooks = categoryBooks.filter(b => b.subcategory === sub);
         const subKeys = [...new Set(subBooks.map(b => sk(b.collection, b.group, b.category, b.subcategory || "")))];
         det.appendChild(makeOpt(sub, subKeys.length > 0 && subKeys.every(key => sel.subcategories.has(key)), (on) => {
+          leaveEighteen();
           for (const key of subKeys) on ? sel.subcategories.add(key) : sel.subcategories.delete(key);
           applyFilters();
         }, subBooks.length));
@@ -1377,23 +1471,26 @@ function countOf(fn) { return allBooks.reduce((a, b) => a + (fn(b) ? 1 : 0), 0);
 
 function applyFilters() {
   const kws = sel.keyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const out = BookFilterState.isReady(sel) ? allBooks.filter(b => {
-    if (kws.length) {
-      const hay = ((b.title || "") + " " + (b.author || "")).toLowerCase();
-      if (!kws.every(k => hay.includes(k))) return false;
-    }
-    return BookFilterState.matches(sel, b);
-  }) : [];
+  const matchKw = (b) => {
+    if (!kws.length) return true;
+    const hay = ((b.title || "") + " " + (b.author || "")).toLowerCase();
+    return kws.every(k => hay.includes(k));
+  };
+  const out = eighteenOn
+    ? eighteenBooks(allBooks).filter(matchKw)
+    : (BookFilterState.isReady(sel) ? allBooks.filter(b => matchKw(b) && BookFilterState.matches(sel, b)) : []);
 
   const emptyText = $("#emptyText");
   const emptyReset = $("#emptyReset");
   const selectedEmptyColl = [...sel.collections].some(c => countOf(b => b.collection === c) === 0);
   const emptyCollectionState = out.length === 0 && selectedEmptyColl
-    && !sel.categories.size && !sel.subcategories.size;
+    && !sel.categories.size && !sel.subcategories.size && !eighteenOn;
   emptyReset.hidden = !emptyCollectionState;
-  if (emptyCollectionState) {
+  if (eighteenOn && out.length === 0) {
+    emptyText.textContent = "十八推荐的书暂时还没在书库里";
+  } else if (emptyCollectionState) {
     emptyText.textContent = "该书库暂时还没有入库书籍";
-  } else if (sel.collections.size && !sel.groups.size) {
+  } else if (!eighteenOn && sel.collections.size && !sel.groups.size) {
     emptyText.textContent = "请再选择左手书籍或右手书籍";
   } else {
     emptyText.textContent = "没有找到匹配的书籍";
@@ -1415,6 +1512,9 @@ function booksPerRow() {
 
 // 把书按「书库 → 阅读方向 → 具体分类」分格，保持出现顺序；同一格的书排在同一面柜子里。
 function groupByCategory(list) {
+  if (eighteenOn) {
+    return [{ collection: "懿十八的推荐橱窗", group: "", category: "十八推荐", books: list }];
+  }
   const map = new Map();
   for (const b of list) {
     const key = [b.collection, b.group, b.category].join("||");
@@ -1627,6 +1727,7 @@ const RATINGS = {   // 拓展好评书籍 → { s: 评分, p: 平台 }
 };
 
 function sourceOf(b) {
+  if (b.source) return b.source;
   const hay = (b.path || "") + " " + (b.title || "");
   if (/z-?library|1lib|z-lib|zlib/i.test(hay)) return "Z-Library";
   return "网络收集";
@@ -1634,6 +1735,7 @@ function sourceOf(b) {
 function ratingOf(b) {
   // 评分只给拓展好评书籍：有垂类书与之同名（如《万历十五年》两库都有），不能按标题误伤垂类书
   if (!b.collection || !b.collection.includes("好评")) return null;
+  if (b.rating != null) return { s: b.rating, p: b.ratingPlatform || "豆瓣" };
   return RATINGS[(b.title || "").trim()] || null;
 }
 // 拼「来源 / 评分」两个标签的 HTML（悬停导读卡与详情弹窗共用）
@@ -1814,7 +1916,7 @@ if (canHover && grabHand) {
 /* ---------- 磁吸按钮 ----------
    参考 chungsunglau.co.uk：按钮会被鼠标轻轻吸过去一点，离开又弹回。
    用独立的 CSS translate 属性实现（与元素自身的 transform 叠加，互不干扰）。 */
-const MAGNETIC = ".btn, .chip, .brand, #toTop, .m-close, .m-download, #clearFilters";
+const MAGNETIC = ".btn, .chip, .brand, #toTop, .m-close, .m-download, .m-buy-btn, #clearFilters, #eighteenBtn";
 const magnetBound = new WeakSet();
 function bindMagnetic(scope) {
   if (!canHover) return;
@@ -1848,10 +1950,6 @@ function updateSelUI() {
   $("#selSize").textContent = fmtSize(
     allBooks.reduce((a, b) => a + (picked.has(b.path) ? (b.size || 0) : 0), 0));
   $("#selBar").classList.toggle("show", n > 0);
-  const hit = shownBooks.reduce((a, b) => a + (picked.has(b.path) ? 1 : 0), 0);
-  const box = $("#pickAll");
-  box.checked = shownBooks.length > 0 && hit === shownBooks.length;
-  box.indeterminate = hit > 0 && hit < shownBooks.length;
 }
 
 function syncCardMarks() {
@@ -1896,8 +1994,8 @@ function triggerDownload(path) {
 
 const today = () => new Date().toLocaleDateString("sv");
 
-$("#pickAll").addEventListener("change", (e) => {
-  for (const b of shownBooks) e.target.checked ? picked.add(b.path) : picked.delete(b.path);
+$("#pickAll").addEventListener("click", () => {
+  for (const b of shownBooks) picked.add(b.path);
   syncCardMarks();
 });
 $("#selInvert").addEventListener("click", () => {
@@ -2000,13 +2098,17 @@ function openModal(b, idx) {
     sumEl.classList.add("empty");
   }
 
+  const showBuy = eighteenOn && isEighteenBook(b);
   const crumbEls = [b.collection, b.group, b.category, b.subcategory].filter(Boolean);
+  const recTag = showBuy ? `<span class="tag">十八推荐</span>` : "";
   $("#mCrumbs").innerHTML =
     crumbEls.map(c => `<span class="tag">${esc(c)}</span>`).join("") +
+    recTag +
     `<span class="tag fmt">${esc(b.format)}</span>` +
     srcRateTagsHtml(b);   // 来源（好评书另有评分）
 
   $("#mPath").textContent = `${String(b.format || "PDF").toUpperCase()} · ${fmtSize(b.size || 0)}`;
+  $("#mBuy").hidden = !showBuy;
 
   const mBook = $("#mBook");
   mBook.style.removeProperty("--cov");
@@ -2030,7 +2132,21 @@ function openModal(b, idx) {
   $("#modalClose").focus();
 }
 
+function closeBuyShot() {
+  const shot = $("#buyShot");
+  shot.classList.remove("show");
+  shot.setAttribute("aria-hidden", "true");
+}
+function openBuyShot() {
+  const shot = $("#buyShot");
+  const img = $("#buyShotImg");
+  if (img.getAttribute("src") !== EIGHTEEN_BUY_IMG) img.src = EIGHTEEN_BUY_IMG;
+  shot.classList.add("show");
+  shot.setAttribute("aria-hidden", "false");
+}
+
 function closeModal() {
+  closeBuyShot();
   modalMask.classList.remove("show");
   document.body.style.overflow = "";
   modalBook = null;
@@ -2040,7 +2156,11 @@ function closeModal() {
 
 $("#modalClose").addEventListener("click", closeModal);
 modalMask.addEventListener("click", (e) => { if (e.target === modalMask) closeModal(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalMask.classList.contains("show")) closeModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#buyShot").classList.contains("show")) { closeBuyShot(); return; }
+  if (modalMask.classList.contains("show")) closeModal();
+});
 
 $("#mDownload").addEventListener("click", () => {
   if (!modalBook || !downloadReady()) return;
@@ -2049,6 +2169,9 @@ $("#mDownload").addEventListener("click", () => {
   btn.textContent = "已开始下载 ✓";
   setTimeout(() => { btn.textContent = "下载书籍 ↓"; }, 1500);
 });
+$("#mBuy").addEventListener("click", () => { openBuyShot(); });
+$("#buyShotClose").addEventListener("click", closeBuyShot);
+$("#buyShot").addEventListener("click", (e) => { if (e.target === $("#buyShot")) closeBuyShot(); });
 
 let debounceTimer = null;
 $("#search").addEventListener("input", (e) => {
@@ -2056,25 +2179,22 @@ $("#search").addEventListener("input", (e) => {
   debounceTimer = setTimeout(() => { sel.keyword = e.target.value; applyFilters(); }, 150);
 });
 $("#clearFilters").addEventListener("click", () => {
+  leaveEighteen();
   sel.collections.clear(); sel.groups.clear(); sel.categories.clear();
   sel.subcategories.clear(); sel.formats.clear();
   $("#search").value = ""; sel.keyword = "";
   renderFilters(); applyFilters();
 });
 $("#emptyReset").addEventListener("click", () => {
+  leaveEighteen();
   BookFilterState.selectAll(sel);
   $("#search").value = ""; sel.keyword = "";
   renderFilters(); applyFilters();
 });
-$("#refreshBtn").addEventListener("click", async () => {
-  const btn = $("#refreshBtn");
-  btn.disabled = true; btn.textContent = "扫描中…";
-  try {
-    await fetch("/api/refresh", { method: "POST" });
-    await loadAll();
-  } finally {
-    btn.disabled = false; btn.textContent = "重新扫描";
-  }
+$("#eighteenBtn").addEventListener("click", () => {
+  eighteenOn = !eighteenOn;
+  syncEighteenBtn();
+  applyFilters();
 });
 
 const toTop = $("#toTop");
