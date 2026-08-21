@@ -539,6 +539,9 @@
     letter-spacing: 0; text-align: center; line-height: 1;
   }
   .bk.no-cover .stamp { display: flex; }
+  /* 图片尚在传输时也给书一个可读的封面，绝不露出空壳；load 事件到达后再让位给真封面。 */
+  .bk.has-cover:not(.cover-ready) .f-front { display: flex; align-items: center; justify-content: center; }
+  .bk.has-cover:not(.cover-ready) .stamp { display: flex; position: relative; z-index: 3; }
 
   /* hover：书抽出层板、转向你把书脊亮出来、抬起投下更深的影——像被一只手拿起 */
   .bk:hover, .bk:focus-visible {
@@ -566,6 +569,9 @@
 
   #empty, #loading { text-align: center; color: var(--ink-3); padding: 100px 0; font-size: 15px; }
   #empty { display: none; }
+  /* 封面预热器必须留在 DOM 内，浏览器才会把它当成真实图片请求；移到视口外不参与布局。 */
+  #coverWarmup { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+  #coverWarmup img { display: block; width: 1px; height: 1px; }
   #empty .big { font-size: 44px; margin-bottom: 14px; opacity: .5; }
   #emptyReset { margin-top: 22px; color: var(--ink-2); border-color: var(--line); background: var(--paper-card); }
 
@@ -991,6 +997,7 @@
   </div>
   <div id="introSkip">点击任意处进入</div>
 </div>
+<div id="coverWarmup" aria-hidden="true"></div>
 
 <header>
   <div class="header-inner">
@@ -1245,34 +1252,76 @@ function getJSON(url) {
   });
 }
 
-/* 开场动画播放期间（约 2.4s）后台预载全部封面：先载当前这一屏、再补齐其余。
-   new Image() 只灌 HTTP 缓存不上屏，分批 + requestIdleCallback 让出主线程，不抢开场帧。
-   以后书再多，用户第一次点开也不会卡顿或看到空白封面。 */
-let coversPreloaded = false;
+/* 开场期间建立完整封面缓存。切换筛选会重建书架 DOM，不能依赖新 <img> 的 lazy
+   请求；必须先把资源送进浏览器缓存，再允许开场幕布撤掉。并发控制在 24 条，避免
+   2500 张图同时解码抢掉主线程。 */
+let coverPreloadStarted = false;
+let coverPreloadDone = false;
+let coverPreloadResolve;
+const coverPreloadReady = new Promise((resolve) => { coverPreloadResolve = resolve; });
+let coverFirstPaintDone = false;
+let coverFirstPaintResolve;
+const coverFirstPaintReady = new Promise((resolve) => { coverFirstPaintResolve = resolve; });
+function updateCoverProgress(done, total) {
+  const hint = $("#introSkip");
+  if (hint && !coverPreloadDone) hint.textContent = `封面准备 ${done} / ${total}`;
+  if (loadingEl && !coverPreloadDone) loadingEl.textContent = `正在准备封面 ${done} / ${total}`;
+}
 function preloadCovers() {
-  if (coversPreloaded) return;
-  coversPreloaded = true;
+  if (coverPreloadStarted) return coverPreloadReady;
+  coverPreloadStarted = true;
   const seen = new Set();
   const urls = [];
   const push = (b) => {
     if (b.cover && !seen.has(b.cover)) { seen.add(b.cover); urls.push(ASSET_PREFIX + encodeURI(b.cover)); }
   };
-  (shownBooks.length ? shownBooks : allBooks).forEach(push);   // 当前这屏优先
-  allBooks.forEach(push);                                       // 其余全部补齐
-  if (!urls.length) return;
-  let i = 0;
-  const BATCH = 8;
-  const schedule = window.requestIdleCallback
-    ? (fn) => requestIdleCallback(fn, { timeout: 300 })
-    : (fn) => setTimeout(fn, 50);
-  (function pump() {
-    for (let n = 0; n < BATCH && i < urls.length; n++, i++) {
-      const im = new Image();
-      im.decoding = "async";
-      im.src = urls[i];
-    }
-    if (i < urls.length) schedule(pump);
-  })();
+  // 两个书库各先备好首屏（48 本），切换“书库类型”时不用再看空书架；其余后台补齐。
+  ["垂类书籍", "拓展好评书籍"].forEach((collection) =>
+    allBooks.filter((book) => book.collection === collection).slice(0, 48).forEach(push));
+  allBooks.forEach(push);                                       // 其余全部后台补齐
+  const settle = () => {
+    coverPreloadDone = true;
+    const hint = $("#introSkip");
+    if (hint) hint.textContent = "点击任意处进入";
+    coverPreloadResolve();
+  };
+  const settleFirstPaint = () => {
+    if (coverFirstPaintDone) return;
+    coverFirstPaintDone = true;
+    coverFirstPaintResolve();
+  };
+  if (!urls.length) { settleFirstPaint(); settle(); return coverPreloadReady; }
+  const firstPaintTarget = Math.min(96, urls.length);
+  let completed = 0;
+  const warmup = $("#coverWarmup");
+  warmup.replaceChildren();
+  let cursor = 0;
+  const loadOne = (url) => new Promise((resolve) => {
+    const image = new Image();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      completed += 1;
+      if (completed >= firstPaintTarget) settleFirstPaint();
+      if (completed === urls.length || completed % 24 === 0) updateCoverProgress(completed, urls.length);
+      resolve();
+    };
+    image.loading = "eager";
+    image.fetchPriority = "high";
+    image.decoding = "async";
+    image.onload = done;
+    image.onerror = done;       // 坏图不能卡住整个开场
+    image.src = url;
+    warmup.appendChild(image);   // 必须进 DOM，不能交给离屏资源调度
+    if (image.complete) queueMicrotask(done);
+  });
+  const worker = async () => {
+    while (cursor < urls.length) await loadOne(urls[cursor++]);
+  };
+  // 不把两千多张图同时标成 high priority；并发 12 条保证首批立即开始且不会淹没本地服务。
+  Promise.all(Array.from({ length: Math.min(12, urls.length) }, worker)).then(settle, settle);
+  return coverPreloadReady;
 }
 
 async function loadAll() {
@@ -1294,13 +1343,13 @@ async function loadAll() {
   filtersData = filtersRes;
   const alive = new Set(allBooks.map(b => b.path));
   for (const p of [...picked]) if (!alive.has(p)) picked.delete(p);
-  loadingEl.style.display = "none";
   syncDownloadAvailability();
-  applyDefaultGroup();   // 首次进入默认点开「右手书籍」
   renderStats();
   renderFilters();
+  preloadCovers();
+  loadingEl.style.display = "none";
+  applyDefaultGroup();   // 首次进入默认点开「右手书籍」
   applyFilters();
-  preloadCovers();   // 开场动画正播，后台把封面全灌进缓存
 }
 
 // 首次进入默认选中「右手书籍」这一阅读方向，让书架一进来就有内容、且落在主推的一侧。
@@ -1625,7 +1674,13 @@ function buildBookHTML(b, idx) {
   const lean = (hash01((b.id || 1) * 7.3) - 0.5) * 3;  // -1.5°–1.5°
   const cls = "bk " + (b.cover ? "has-cover" : "no-cover") + (on ? " picked" : "");
   const style = `height:calc(var(--book-w) * 1.5 * ${heightScale.toFixed(3)});--lean:${lean.toFixed(2)}deg`;
-  const coverHtml = b.cover ? `<img loading="lazy" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">` : "";
+  // 首屏先把可见书架填满，避免浏览器把全部图片都当作离屏资源而只显示书壳；
+  // 后面的书仍然延迟加载，不能让 2500 本封面同时抢网络和内存。
+  const coverIndex = Number(String(idx).replace(/\D/g, ""));
+  const priorityCover = coverIndex > 0 && coverIndex <= 32;
+  const coverHtml = b.cover
+    ? `<img loading="${priorityCover ? "eager" : "lazy"}" fetchpriority="${priorityCover ? "high" : "auto"}" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">`
+    : "";
   const firstChar = (b.title || "书").trim().charAt(0) || "书";
   // 真 3D 书：封底 + 左书脊 + 右书口 + 正面封面。离屏时侧面不显示（CSS 控制），只是一张平封面。
   return `<div class="${cls}" data-path="${esc(b.path)}" data-idx="${esc(idx)}" role="button" aria-label="${esc(`查看《${b.title || "未命名"}》详情`)}" tabindex="0" style="${style}">` +
@@ -1665,7 +1720,7 @@ grid.addEventListener("load", (e) => {                    // 封面加载成功 
   const img = e.target;
   if (!(img instanceof HTMLImageElement)) return;
   const bk = img.closest(".bk");
-  if (bk && img.naturalWidth) tintBookFromCover(bk, img);
+  if (bk && img.naturalWidth) { bk.classList.add("cover-ready"); tintBookFromCover(bk, img); }
 }, true);
 grid.addEventListener("error", (e) => {                   // 封面加载失败 → 退成渐变文字卡
   const img = e.target;
@@ -1882,16 +1937,25 @@ if (canHover) {
     setTimeout(() => intro.remove(), 750);
     dockLamp();                                 // 灯滑去标题上方固定
   };
-  // 点 / 键 / 滚任一动作立即进入
+  // 开场最短 2.4 秒；两类书库的首屏封面尚未预热完成时继续停留。
+  let finishRequested = false;
+  const finishAfterCovers = () => {
+    if (done || finishRequested) return;
+    finishRequested = true;
+    const hint = $("#introSkip");
+    if (!coverFirstPaintDone && hint) hint.textContent = "正在准备首屏封面…";
+    coverFirstPaintReady.then(finish);
+  };
+  // 点 / 键 / 滚任一动作也不会绕过封面预热。
   ["pointerdown", "keydown", "wheel"].forEach(ev =>
-    window.addEventListener(ev, finish, { once: true, passive: true }));
+    window.addEventListener(ev, finishAfterCovers, { once: true, passive: true }));
 
   // 灯先点亮，稍作停留后暖光绽放；落幕即 finish
   setTimeout(() => {
     intro.classList.add("lit");                 // 光团绽放 + 标题浮出
     if (lamp) lamp.classList.add("lit");        // 点亮这盏灯
   }, 420);
-  setTimeout(finish, 2400);                     // 全程 ~2.4s 自动播完
+  setTimeout(finishAfterCovers, 2400);           // 至少 2.4s；未预热完则继续等待
 })();
 
 /* ---------- 抓手光标 ----------
