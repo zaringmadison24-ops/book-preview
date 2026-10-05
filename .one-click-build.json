@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "workspaceId": "3ab3d44b508696c68f5f9c2aaf3f224233d204f7bb28915f66627b7a629fee1b",
+  "businessDate": "2026-10-05",
+  "batchId": "2026-10-05:c02edde4-3670-44dc-b37a-9fa1d5b7a000",
+  "buildId": "9ddbc38dfb8cfe35c16fcbc6d8d3eacf",
+  "createdAt": "2026-10-05T11:28:02.853800+00:00",
+  "phase": "published",
+  "previousBuildId": "55b7ec8ad7f2f6c80d0564643a217dab",
+  "replacedByBuildId": null
+}
