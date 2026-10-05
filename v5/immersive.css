@@ -1,0 +1,36 @@
+/* V5 immersive WebGL layer */
+#v5Immersive{position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none}
+#v5Immersive canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:auto;outline:none}
+#v5Immersive::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(5,11,9,.2),transparent 25% 75%,rgba(5,11,9,.2)),linear-gradient(180deg,rgba(5,11,9,.1),transparent 58%,rgba(5,11,9,.42))}
+.hero .p-left,.hero .p-stats,.hero .room-lamp{z-index:4}
+.v5-space-hud{position:absolute;left:50%;bottom:27px;z-index:5;transform:translateX(-50%);display:flex;align-items:center;gap:10px;pointer-events:auto}
+.v5-enter{height:42px;padding:0 18px;border-radius:999px;border:1px solid rgba(228,201,143,.28);background:rgba(7,16,14,.56);color:#f3e7cf;font:600 12px/1 var(--sans);letter-spacing:.08em;backdrop-filter:blur(16px);box-shadow:0 12px 30px rgba(0,0,0,.2);transition:.25s var(--ease)}
+.v5-enter:hover{border-color:rgba(228,201,143,.58);background:rgba(18,31,26,.76);transform:translateY(-1px)}
+.v5-enter.active{background:linear-gradient(180deg,rgba(207,173,103,.95),rgba(157,119,61,.95));color:#1c140b;border-color:transparent}
+.v5-room-hint{height:42px;display:flex;align-items:center;gap:8px;padding:0 14px;border:1px solid rgba(228,201,143,.16);border-radius:999px;background:rgba(7,16,14,.36);color:rgba(243,231,207,.58);font:500 11px/1 var(--sans);backdrop-filter:blur(12px)}
+.v5-room-hint i{width:6px;height:6px;border-radius:50%;background:#d8b06a;box-shadow:0 0 12px rgba(216,176,106,.75)}
+.v5-hover-card{position:absolute;z-index:6;min-width:180px;max-width:280px;padding:10px 12px;border:1px solid rgba(228,201,143,.22);border-radius:12px;background:rgba(8,15,12,.82);color:#f1e7d2;pointer-events:none;opacity:0;transform:translate(14px,14px) scale(.96);transition:opacity .14s ease,transform .14s ease;backdrop-filter:blur(18px);box-shadow:0 14px 40px rgba(0,0,0,.3)}
+.v5-hover-card.show{opacity:1;transform:translate(14px,14px) scale(1)}
+.v5-hover-card b{display:block;font-family:var(--serif);font-size:13px;line-height:1.35;margin-bottom:4px}
+.v5-hover-card span{display:block;color:rgba(241,231,210,.58);font-size:10.5px;line-height:1.4}
+body.v5-deep .hero::before{border-color:rgba(228,201,143,.22);box-shadow:inset 0 0 100px rgba(228,201,143,.055),0 40px 130px rgba(0,0,0,.4)}
+body.v5-deep #roomLight{opacity:.72}
+body.v5-deep .hero .p-left{transform:translateY(-8px);transition:transform .8s cubic-bezier(.2,.8,.2,1)}
+.v5-webgl-fallback{position:absolute;right:20px;bottom:20px;z-index:5;padding:8px 11px;border-radius:999px;background:rgba(8,15,12,.52);border:1px solid rgba(228,201,143,.16);color:rgba(243,231,207,.54);font-size:10px;letter-spacing:.08em;display:none}
+.v5-webgl-fallback.show{display:block}
+@media(max-width:940px){
+  #v5Immersive{opacity:.84}
+  .v5-space-hud{bottom:18px}
+  .v5-room-hint{display:none}
+  .v5-enter{height:38px;padding:0 15px}
+}
+@media(max-width:640px){
+  #v5Immersive{opacity:.65}
+  .v5-space-hud{bottom:13px}
+  .v5-enter{font-size:11px}
+  .v5-hover-card{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  #v5Immersive canvas{pointer-events:none}
+  .v5-space-hud{display:none}
+}

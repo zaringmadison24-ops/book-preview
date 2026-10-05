@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#d9d5ca">
+<link rel="icon" href="data:,">
+<title>书籍预览 7.0 · 现代图书馆</title>
+<link rel="stylesheet" href="modern-library.css?v=7.1">
+</head>
+<body>
+<div id="app">
+  <div id="sceneHost" role="application" aria-label="现代图书馆三维空间" aria-describedby="sceneHelp">
+    <div id="loadingScene"><span></span><b>正在打开图书馆</b><small>整理馆藏与空间导览…</small></div>
+    <div id="spatialLabels" aria-hidden="true"></div>
+  </div>
+  <p class="srOnly" id="sceneHelp">可以使用滚轮、键盘上下方向键或触摸滑动在馆内移动；打开馆内导览可用文字列表浏览书籍。</p>
+  <header class="topbar">
+    <button class="brand" id="homeBtn" type="button" title="回到图书馆入口">
+      <span class="brandMark">L</span><span><b>城市藏书馆</b><small>MODERN LIBRARY · V7</small></span>
+    </button>
+    <label class="searchBox">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.8"/><path d="m16.2 16.2 4.3 4.3"/></svg>
+      <input id="search" aria-label="搜索馆藏" autocomplete="off" placeholder="在馆内检索书名、作者、分类…">
+      <kbd>⌘ K</kbd>
+    </label>    <div class="topActions">
+      <span class="counter" id="counter">载入中</span>
+      <button class="uiBtn" id="resetBtn" type="button">全馆</button>
+      <button class="uiBtn primary" id="guideBtn" type="button">馆内导览</button>
+    </div>
+  </header>
+  <section class="entryTitle" id="entryTitle">
+    <div class="eyebrow">A LIVING CATALOGUE</div>
+    <h1>在一座真实的图书馆里<br><em>找到下一本书</em></h1>
+    <p>滚轮沿主通道前行 · 点击馆区进入分类 · 从书架抽出一本书</p>
+    <button id="enterBtn" type="button">进入馆内 <span>→</span></button>
+  </section>
+  <div class="wingRail" id="wingRail" aria-label="馆区切换"></div>
+  <aside class="guidePanel" id="guidePanel" role="dialog" aria-modal="true" aria-labelledby="guideTitle" aria-hidden="true" tabindex="-1">
+    <div class="panelHead"><div><small>DIRECTORY</small><h2 id="guideTitle">馆内导览</h2></div><button id="guideClose" type="button" aria-label="关闭馆内导览">×</button></div>
+    <div class="crumb" id="crumb">全馆 · 所有馆藏</div>
+    <div class="guideSearchHint">选择一个分类，相机会移动到对应书区并重新陈列书籍。</div>
+    <div class="guideGroups" id="guideGroups"></div>
+    <div class="categoryGrid" id="categoryGrid"></div>
+    <div class="resultHead"><span>书籍目录</span><small id="resultSummary">当前显示前 18 本</small></div>
+    <div class="guideResults" id="guideResults" aria-label="可访问的书籍目录"></div>
+  </aside>
+  <section class="bookDesk" id="bookDesk" role="dialog" aria-modal="true" aria-labelledby="deskTitle" aria-describedby="deskSummary" aria-hidden="true" tabindex="-1">
+    <button class="deskClose" id="deskClose" type="button" aria-label="关闭书籍详情">×</button>
+    <div class="deskCover" id="deskCover"><img id="deskImg" alt="书籍封面"><span id="deskFallback">书</span></div>    <div class="deskCopy">
+      <div class="deskKicker" id="deskKicker">馆藏详情</div>
+      <h2 id="deskTitle"></h2>
+      <div class="deskAuthor" id="deskAuthor"></div>
+      <p id="deskSummary"></p>
+      <div class="deskTags" id="deskTags"></div>
+      <div class="deskActions">
+        <button class="deskPrimary" id="openBookBtn" type="button">打开书籍</button>
+        <a class="deskSecondary" id="downloadBookBtn" href="#" download>下载文件</a>
+      </div>
+    </div>
+  </section>
+  <section class="emptyState" id="emptyState" aria-live="polite" aria-hidden="true">
+    <div class="emptyIcon">⌕</div><h2 id="emptyTitle">没有找到匹配的书</h2><p id="emptyCopy">换一个关键词，或回到全馆继续浏览。</p><button id="emptyReset" type="button">清空搜索并回到全馆</button>
+  </section>
+  <div class="hoverCard" id="hoverCard"><b></b><span></span></div>
+  <div class="bottomHud">
+    <div class="walkHint"><i></i><span>滚轮前后行走</span><span>·</span><span>移动鼠标观察空间</span></div>
+    <div class="shelfPager">
+      <button id="prevShelf" type="button">‹</button><span id="pageLabel">第 1 架</span><button id="nextShelf" type="button">›</button>
+    </div>
+    <div class="locationBadge" id="locationBadge"><span>入口大厅</span><small>GROUND FLOOR</small></div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+<script src="three.min.js"></script>
+<script src="modern-library.js?v=7.1"></script>
+</body>
+</html>

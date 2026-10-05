@@ -1,0 +1,2378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书籍预览 5.0 · 沉浸藏书室</title>
+<style>
+  :root {
+    /* 灯下书房：胡桃木 + 墨绿（银行家灯罩）+ 黄铜铭牌 + 宣纸。亮调，与 2.0 暗色相对。 */
+    --paper: #ECE5D6;          /* 宣纸墙 / 内容底 */
+    --paper-2: #E2D9C7;        /* 稍深的纸 */
+    --paper-card: #F5F0E4;     /* 读书卡 / 铭牌底板 */
+    --ink: #261C11;            /* 暖黑正文 */
+    --ink-2: #5C5142;          /* 次级文字 */
+    --ink-3: #8A7D68;          /* 更弱的文字 */
+    --wood: #7A5230;           /* 胡桃木层板 */
+    --wood-2: #8F6339;         /* 木受光面 */
+    --wood-deep: #452B16;      /* 木暗影 / 层板前沿 */
+    --wood-frame: #5E3D20;     /* 柜体边框 */
+    --green: #33493B;          /* 墨绿：银行家灯罩、柜体内衬 */
+    --green-2: #2A3C31;
+    --brass: #B08D57;          /* 黄铜铭牌 */
+    --brass-2: #8F6E40;
+    --brass-hi: #E4C98F;       /* 黄铜高光 */
+    --seal: #A63A2B;           /* 印章红：极省着用 */
+    --line: rgba(38, 28, 17, 0.16);
+    --line-soft: rgba(38, 28, 17, 0.09);
+    --radius-m: 12px;
+    --radius-l: 18px;
+    --ease: cubic-bezier(.28,.11,.32,1);
+    --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro SC",
+      "PingFang SC", "Helvetica Neue", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    /* 一本书的基准尺寸（JS 切分层板时用同一组数） */
+    --book-w: 104px;
+    --book-gap: 18px;
+  }
+
+  * { box-sizing: border-box; }
+  /* scrollbar-gutter:stable 永久预留滚动条槽位——开场锁滚动（overflow:hidden）时滚动条虽消失，
+     但槽位还在、视口宽度不变，锚点不左右挪，灯才能一条直线滑到位、落位不横跳（顺带修了详情弹窗开关的滚动条跳动）。 */
+  html { scroll-behavior: smooth; scrollbar-gutter: stable; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    background:
+      /* 宣纸纹理：极淡的纤维斑驳 + 一盏暖灯从上方漫下来 */
+      radial-gradient(120% 60% at 50% -10%, rgba(255, 236, 190, 0.5), transparent 55%),
+      radial-gradient(40% 30% at 12% 8%, rgba(140, 110, 70, 0.10), transparent 70%),
+      radial-gradient(50% 40% at 90% 4%, rgba(140, 110, 70, 0.08), transparent 70%),
+      var(--paper);
+  }
+  ::selection { background: rgba(176, 141, 87, 0.4); }
+  ::-webkit-scrollbar { width: 11px; }
+  ::-webkit-scrollbar-track { background: var(--paper-2); }
+  ::-webkit-scrollbar-thumb { background: #B9A888; border-radius: 6px; border: 2px solid var(--paper-2); }
+  ::-webkit-scrollbar-thumb:hover { background: #A08E6C; }
+
+  /* ---------- 顶栏：一条木质检索长轨 ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: linear-gradient(180deg, #6B4726, #553517);
+    border-bottom: 1px solid #3A2410;
+    box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 8px 24px rgba(40, 24, 8, 0.18);
+  }
+  .header-inner {
+    max-width: 2060px; margin: 0 auto; padding: 13px 22px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 11px; white-space: nowrap;
+    color: #F3E7CF; text-decoration: none;
+  }
+  .brand .lampdot {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FFE9A8, var(--brass) 68%);
+    box-shadow: 0 0 12px rgba(255, 224, 150, 0.9);
+  }
+  .brand .bt {
+    font-family: var(--serif); font-weight: 900; font-size: 17px; letter-spacing: .04em;
+  }
+  .brand .bv {
+    font-family: var(--mono); font-size: 11px; color: rgba(243,231,207,.62);
+    letter-spacing: .12em; margin-top: 2px;
+  }
+
+  .search-wrap { flex: 1; min-width: 230px; max-width: 600px; position: relative; }
+  .search-wrap svg {
+    position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: rgba(243,231,207,.55); pointer-events: none;
+  }
+  #search {
+    width: 100%; height: 42px; padding: 0 18px 0 41px;
+    font-size: 14px; color: #F6EEDA;
+    background: rgba(20, 12, 5, 0.34);
+    border: 1px solid rgba(228, 201, 143, 0.28); border-radius: 999px;
+    outline: none; transition: all .25s var(--ease);
+  }
+  #search::placeholder { color: rgba(243,231,207,.45); }
+  #search:focus {
+    background: rgba(20, 12, 5, 0.5); border-color: var(--brass-hi);
+    box-shadow: 0 0 0 4px rgba(176,141,87,.22), 0 0 22px rgba(255,224,150,.14);
+  }
+
+  .header-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+  #count { font-size: 13px; color: rgba(243,231,207,.78); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .btn {
+    height: 42px; padding: 0 20px; border: none; cursor: pointer;
+    font-family: inherit; font-size: 13.5px; font-weight: 600;
+    border-radius: 999px; transition: all .25s var(--ease); white-space: nowrap;
+  }
+  .btn.primary {
+    background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+    color: #3A2508; box-shadow: 0 4px 14px rgba(58, 32, 4, 0.35), 0 1px 0 rgba(255,255,255,.4) inset;
+  }
+  .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(58,32,4,.4), 0 1px 0 rgba(255,255,255,.4) inset; }
+  .btn.primary:active { transform: translateY(0); }
+  .btn:disabled { opacity: .55; cursor: default; transform: none; }
+  .btn.ghost {
+    background: rgba(20, 12, 5, 0.3); color: rgba(243,231,207,.82);
+    border: 1px solid rgba(228,201,143,.3); box-shadow: none;
+  }
+  .btn.ghost:hover { color: #F6EEDA; border-color: var(--brass-hi); transform: translateY(-1px); }
+  #eighteenBtn.on {
+    background: linear-gradient(180deg, var(--brass-hi), var(--brass));
+    color: #3A2508; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(58, 32, 4, 0.35), 0 1px 0 rgba(255,255,255,.4) inset;
+  }
+
+  body.static-mode .local-only,
+  body:not(.static-mode) .static-only { display: none; }
+  body.downloads-disabled .m-download,
+  body.downloads-disabled #selDownload,
+  body.downloads-disabled #selCancel { display: none; }
+
+  /* ---------- Hero：灯下光影——看不见的灯把标题打进一汪暖光，两翼沉进柔影，铺极淡纸纹 ---------- */
+  .hero {
+    position: relative;
+    margin: 0; padding: 96px 22px 66px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    background-color: var(--paper);
+    background-image:
+      /* 纸纹噪点（自身 alpha 仅 0.04，叠一层极淡颗粒感） */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
+      /* 暖光池：从上方 30% 处漫下来，居中打在标题上 */
+      radial-gradient(58% 90% at 50% 30%, rgba(255,232,178,.75), rgba(255,232,178,.18) 46%, transparent 68%),
+      /* 暗角：两翼与四角落进柔和的影子 */
+      radial-gradient(140% 120% at 50% 42%, transparent 52%, rgba(58,40,16,.22) 100%);
+  }
+  .hero .p-kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .34em;
+    color: var(--brass-2); text-transform: uppercase; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  /* kicker 两边各一条细铜线，对称收住 */
+  .hero .p-kicker::before, .hero .p-kicker::after { content: ""; height: 1px; width: 46px; }
+  .hero .p-kicker::before { background: linear-gradient(90deg, transparent, var(--brass)); }
+  .hero .p-kicker::after { background: linear-gradient(90deg, var(--brass), transparent); }
+  .hero h2 {
+    font-family: var(--serif); font-weight: 900; margin: 0;
+    font-size: clamp(50px, 6vw, 74px); letter-spacing: .03em; line-height: 1.04;
+    color: var(--ink); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  .hero h2 em { font-style: normal; color: var(--seal); }
+  /* 标题下那道细铜杠：唯一的黄铜记忆点，居中 */
+  .hero .p-tbar {
+    width: 118px; height: 4px; margin: 20px auto 0; border-radius: 2px;
+    background: linear-gradient(90deg, var(--brass), #C7A25F);
+    box-shadow: 0 2px 6px rgba(176, 141, 87, 0.4);
+  }
+  .hero .p-sub { margin-top: 18px; font-size: 14px; letter-spacing: .12em; color: var(--ink-2); }
+
+  /* 统计：居中一排，黄铜数字 */
+  .hero .p-stats { display: flex; gap: 40px; margin-top: 30px; }
+  .hero .stat { position: relative; text-align: center; }
+  .hero .stat + .stat::before {
+    content: ""; position: absolute; left: -20px; top: 12%; height: 76%; width: 1px;
+    background: var(--line);
+  }
+  .hero .stat .num {
+    font-family: var(--serif); font-size: 40px; font-weight: 900; line-height: 1;
+    color: var(--brass-2); font-variant-numeric: tabular-nums;
+  }
+  .hero .stat .num.red { color: var(--seal); }
+  .hero .stat .lbl { font-size: 12px; color: var(--ink-3); margin-top: 8px; letter-spacing: .14em; }
+
+  /* ---------- 常驻书房灯：全场只有一盏，从开场滑到标题上方固定 ----------
+     .room-lamp 是「锚点」：只管定位、灯下那汪暖光、固定后的轻晃。
+     #lamp 是真正的那盏灯——开场时它被提到暗场中央点亮，落幕不消失，
+     而是滑进这个锚点落位；标题上方也就从「没灯」变成「灯固定在这儿」。 */
+  .room-lamp {
+    position: absolute; left: 50%; top: -4px; z-index: 3;
+    width: 88px;
+    aspect-ratio: 150 / 190;   /* 关键：灯被提去开场时锚点是空的、高度会塌成 0，
+                                  量出来的「中心」就偏到顶边，灯落位会往下跳。
+                                  给定宽高比，锚点空着也有灯落位后的真实高度，滑行终点才准。 */
+    pointer-events: none;
+    transform: translateX(-50%);
+    transform-origin: 50% 0;
+    filter: drop-shadow(0 6px 14px rgba(40, 24, 6, 0.3));
+  }
+  /* 灯落位固定后才开始轻轻晃（滑动途中锚点保持不动，免得对不准） */
+  .room-lamp.on { animation: lampSway 7.5s ease-in-out infinite; }
+  /* 灯下一汪暖光，把标题罩进光池，与 hero 背景的光斑接上 */
+  .room-lamp::after {
+    content: ""; position: absolute; left: 50%; top: 58%;
+    width: 340px; height: 300px; transform: translateX(-50%);
+    background: radial-gradient(ellipse 50% 50% at 50% 0%, rgba(255, 216, 150, 0.4), rgba(255, 210, 138, 0.12) 46%, transparent 68%);
+    pointer-events: none;
+  }
+  /* 摆动从中位出发：0%/100% 都是正的，灯落位（旋转 0）那一刻接上动画不跳帧 */
+  @keyframes lampSway {
+    0%, 100% { transform: translateX(-50%) rotate(0deg); }
+    25%      { transform: translateX(-50%) rotate(-1.5deg); }
+    75%      { transform: translateX(-50%) rotate(1.5deg); }
+  }
+
+  /* #lamp：唯一的那盏灯。默认（落位态）待在锚点里随它定位，灯泡常亮、光晕散开。
+     开场时 JS 把它提到 body 上、加 .flying 变成 fixed 居中、比落位时大；落幕滑到锚点
+     的视口坐标后，再 append 回锚点、摘掉 .flying、清掉行内位移——回到下面的落位态。 */
+  #lamp { display: block; width: 100%; }
+  #lamp svg { display: block; width: 100%; height: auto; overflow: visible; }
+  #lamp .bulb { transition: fill .4s var(--ease); }
+  #lamp .glow { transition: opacity .5s var(--ease); }
+  /* 悬飞态：固定在视口中央、尚未点亮（灯泡暗、光晕藏），.lit 点亮 */
+  #lamp.flying {
+    position: fixed; z-index: 210; left: 50%; top: 50%;
+    width: 150px; transform: translate(-50%, -50%);
+    pointer-events: none;
+    filter: drop-shadow(0 6px 14px rgba(40, 24, 6, 0.35));
+    transition: top 1s var(--ease), left 1s var(--ease), width 1s var(--ease), transform 1s var(--ease);
+  }
+  #lamp.flying .bulb { fill: #4A3A22; }
+  #lamp.flying .glow { opacity: 0; }
+  #lamp.flying.lit .bulb { fill: #FFE7B0; }
+  #lamp.flying.lit .glow { opacity: 1; }
+
+  /* ---------- 布局 ---------- */
+  .layout {
+    max-width: 2060px; margin: 0 auto; padding: 14px 22px 100px;
+    display: grid; grid-template-columns: 268px 1fr; gap: 38px; align-items: start;
+  }
+
+  /* ---------- 侧栏：目录卡片柜 ---------- */
+  aside {
+    position: sticky; top: 84px; max-height: calc(100vh - 108px); overflow-y: auto;
+    background: var(--paper-card);
+    border: 1px solid var(--line); border-radius: var(--radius-l);
+    box-shadow: 0 14px 34px rgba(56, 34, 8, 0.1);
+    padding: 18px 18px 22px;
+  }
+  aside::-webkit-scrollbar { width: 7px; }
+  aside::-webkit-scrollbar-track { background: transparent; }
+  aside::-webkit-scrollbar-thumb { background: #C4B393; border: none; }
+  .side-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 12px; margin-bottom: 4px; border-bottom: 2px solid var(--line);
+  }
+  .side-head h2 {
+    font-size: 14px; font-weight: 700; color: var(--green);
+    letter-spacing: .12em; margin: 0; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .side-head h2::before { content: ""; width: 8px; height: 8px; background: var(--seal); border-radius: 2px; transform: rotate(45deg); }
+  #clearFilters {
+    font-size: 13.5px; color: var(--brass-2); background: none; border: none;
+    cursor: pointer; padding: 3px 8px; border-radius: 7px; font-weight: 600;
+    transition: background .2s;
+  }
+  #clearFilters:hover { background: rgba(176,141,87,.16); }
+
+  .filter-group { margin-top: 22px; }
+  .filter-hint { margin: 10px 0 0; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
+  .fg-title {
+    font-size: 12px; font-weight: 700; color: var(--ink-3);
+    letter-spacing: .1em; margin-bottom: 11px; text-transform: uppercase;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .fg-title .fno { font-family: var(--mono); font-weight: 400; color: var(--brass-2); font-size: 11px; letter-spacing: .04em; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips.stack { flex-direction: column; align-items: stretch; }
+  .chips.stack .chip { justify-content: space-between; width: 100%; }
+  .chips.direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); width: 100%; gap: 8px; }
+  .chips.direction-grid .chip { min-width: 0; justify-content: space-between; padding-inline: 11px; gap: 5px; white-space: nowrap; }
+  .chips.direction-grid .lab, .chips.direction-grid .n { white-space: nowrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px; font-size: 14px; font-weight: 500; cursor: pointer;
+    background: rgba(56, 34, 8, 0.05); color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 999px;
+    transition: all .2s var(--ease); user-select: none; font-family: inherit;
+  }
+  .chip:hover { border-color: var(--brass); color: var(--ink); transform: translateY(-1px); }
+  .chip .n { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .chip.on { color: #F6EEDA; border-color: transparent; background: var(--green); }
+  .chip.on .n { color: rgba(246,238,218,.75); }
+  .chip[data-kind="coll"].on { background: var(--green); box-shadow: 0 3px 12px rgba(51,73,59,.4); }
+  .chip[data-kind="group"].on { background: var(--paper-card); border-color: var(--green); color: var(--green); }
+  .chip[data-kind="fmt"].on { background: var(--paper-card); border-color: var(--brass); }
+
+  .cat-list { display: flex; flex-direction: column; gap: 3px; }
+  .opt {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    font-size: 14.5px; cursor: pointer; border-radius: 9px; color: var(--ink-2);
+    transition: background .15s, color .15s; user-select: none;
+  }
+  .opt:hover { background: rgba(176,141,87,.12); color: var(--ink); }
+  .opt input, .pick input {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  .opt .box, .pick .box {
+    width: 18px; height: 18px; flex-shrink: 0;
+    border: 1.5px solid rgba(38, 28, 17, 0.34); border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all .18s var(--ease); background: var(--paper-card);
+  }
+  .opt .box::after, .pick .box::after {
+    content: ""; width: 10px; height: 6px;
+    border-left: 2px solid #F6EEDA; border-bottom: 2px solid #F6EEDA;
+    transform: rotate(-45deg) scale(0); transition: transform .18s var(--ease);
+    margin-top: -2px;
+  }
+  .opt input:checked + .box, .pick input:checked + .box {
+    background: var(--seal); border-color: transparent; box-shadow: 0 0 0 3px rgba(166,58,43,.18);
+  }
+  .opt input:focus-visible + .box, .pick input:focus-visible + .box { outline: 2px solid var(--brass-2); outline-offset: 3px; }
+  .opt input:checked + .box::after, .pick input:checked + .box::after { transform: rotate(-45deg) scale(1); }
+  .opt input:checked ~ .lab { color: var(--ink); font-weight: 600; }
+  .pick input:indeterminate + .box { background: rgba(166,58,43,.2); border-color: var(--seal); }
+  .opt .lab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .n { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  details.subcat { margin-left: 28px; }
+  details.subcat summary {
+    font-size: 13px; color: var(--ink-3); cursor: pointer; padding: 5px 10px;
+    border-radius: 7px; list-style: none; user-select: none;
+  }
+  details.subcat summary::-webkit-details-marker { display: none; }
+  details.subcat summary::before { content: "›"; display: inline-block; margin-right: 6px; transition: transform .2s var(--ease); }
+  details.subcat[open] summary::before { transform: rotate(90deg); }
+  details.subcat summary:hover { background: rgba(176,141,87,.12); }
+  details.subcat .opt { font-size: 14px; padding: 6px 10px; }
+
+  /* ---------- 书架墙：每一格是一个分类，压一条木层板 ---------- */
+  main { min-width: 0; }
+  #grid { display: flex; flex-direction: column; gap: 54px; }
+
+  .shelf { position: relative; }
+  /* 黄铜铭牌：钉在格子前沿上方，镌刻类名 */
+  .plate {
+    position: relative; display: inline-flex; align-items: baseline; gap: 12px;
+    max-width: 100%; padding: 9px 20px 8px; margin: 0 0 -1px 22px;
+    background: linear-gradient(180deg, #C7A25F, #9C7A44);
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 1px 0 rgba(255,255,255,.35) inset, 0 8px 18px rgba(56,34,8,.22);
+    color: #2E2008; z-index: 2;
+  }
+  .plate::before, .plate::after {
+    content: ""; position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%;
+    transform: translateY(-50%);
+    background: radial-gradient(circle at 34% 30%, #F0DCA6, #7A5A28 70%);
+    box-shadow: 0 1px 1px rgba(50,30,6,.5);
+  }
+  .plate::before { left: 7px; }
+  .plate::after { right: 7px; }
+  .plate .p-crumb {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    font-weight: 700; color: #46300C; text-transform: uppercase; white-space: nowrap;
+  }
+  .plate .p-name {
+    font-family: var(--serif); font-weight: 900; font-size: 21px; letter-spacing: .02em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 0 rgba(255,255,255,.28);
+  }
+  .plate .p-count {
+    font-family: var(--mono); font-size: 12px; font-weight: 700; color: #38260A;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .plate .p-count::before { content: "· "; }
+
+  /* 柜体：墨绿内衬的凹槽，书立在里头。纵深靠三层叠出来——柜顶一道厚影（像上层板投下的），
+     两侧内壁退进阴影，后壁「顶深→底亮」拉开前后距离，再叠内凹软影把整格按进去。 */
+  .case {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,.68), rgba(0,0,0,.3) 15%, transparent 36%),   /* 柜顶深影：格子上沿压一道厚影，像凹进的暗龛 */
+      linear-gradient(90deg, rgba(0,0,0,.44), transparent 7%, transparent 93%, rgba(0,0,0,.44)),  /* 两侧内壁退进阴影 */
+      linear-gradient(180deg, #18211C, var(--green-2) 30%, #2E4034 64%, #4A6651),  /* 后壁：顶最深、底（近前）明显提亮，拉开纵深 */
+      var(--green-2);
+    border: 1px solid var(--wood-deep);
+    border-radius: 0 var(--radius-m) var(--radius-m) var(--radius-m);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.1) inset,
+      0 28px 46px rgba(0,0,0,.5) inset,    /* 凹槽内壁投下的软影，强化「凹进去」 */
+      0 -14px 30px rgba(0,0,0,.26) inset,  /* 底部回弹的一道暗，兜住凹槽 */
+      0 24px 50px rgba(46, 28, 8, 0.26);
+    padding: 26px 20px 40px;   /* 底部多留 40px：最下排层板的影落在这截「地板」上，才看出格子有进深 */
+    overflow: hidden;
+  }
+  /* 柜体两侧木边框 */
+  .case::before, .case::after {
+    content: ""; position: absolute; top: 0; bottom: 0; width: 10px; z-index: 5; pointer-events: none;
+    background: linear-gradient(90deg, var(--wood-deep), var(--wood));
+  }
+  .case::before { left: 0; box-shadow: 2px 0 6px rgba(0,0,0,.3); }
+  .case::after { right: 0; box-shadow: -2px 0 6px rgba(0,0,0,.3); background: linear-gradient(270deg, var(--wood-deep), var(--wood)); }
+
+  /* 一层（一行书 + 它踩的那块木板） */
+  .board { position: relative; }
+  .board + .board { margin-top: 34px; }
+  .board .row {
+    position: relative; z-index: 2;
+    display: flex; align-items: flex-end; gap: var(--book-gap);
+    padding: 0 12px;
+  }
+  /* 木层板：一块有厚度的板。上缘是受光的「板面」亮带（灯在上方，先打到板面），
+     前沿逐层压暗、探出凹槽；板底再向下一排书的头顶投出一片渐弱的影——
+     正是这片「上层板挡光」的影，把上下两排书在纵深上分开，格子才有进深。 */
+  .board .plank {
+    position: absolute; left: -20px; right: -20px; bottom: -8px; height: 24px; z-index: 4;
+    background:
+      linear-gradient(180deg,
+        #E3B678 0%,                 /* 板面受光最亮的一道 */
+        var(--wood-2) 22%,
+        var(--wood) 48%,
+        var(--wood-deep) 82%,
+        #231204 100%);              /* 前沿底缘压到最重，板显得厚、探得出 */
+    border-top: 1px solid rgba(255, 238, 198, 0.78);
+    box-shadow:
+      0 20px 30px rgba(15, 8, 1, 0.7),
+      0 3px 0 rgba(0,0,0,.42) inset;
+    pointer-events: none;
+  }
+  .board .plank::after {  /* 层板投下的影：跨过排间空隙、一直压到下一排书的肩颈，渐弱没入 */
+    content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 60px;
+    background: linear-gradient(180deg, rgba(8, 4, 1, 0.62), rgba(8, 4, 1, 0.24) 46%, transparent);
+  }
+
+  /* 一本书：立在板上。4.0 起改成真 3D 书——正面封面 + 左书脊 + 右书口 + 封底四个面拼出一册有厚度的书。
+     参考 2.0 的 3D 与悬停交互，但保留书房的书架布局、--lean 微倾、层板锚定，且不放腰封。 */
+  .bk {
+    position: relative; flex-shrink: 0;
+    width: var(--book-w); height: calc(var(--book-w) * 1.5);
+    transform-origin: bottom center;
+    transform: translateY(0) rotate(var(--lean, 0deg));
+    transition: transform .34s var(--ease), filter .34s var(--ease);
+    cursor: pointer; outline: none;
+    margin-bottom: 4px;   /* 让层板前沿微微盖住书根 */
+    perspective: 1100px;      /* 3D 舞台：透视只作用在 .vol 上 */
+    --t: 14px;                /* 书厚（书脊/书口的宽度） */
+  }
+  /* 书根接触影：一团圆影垫在书底，让书「踩」在层板上、贴进凹槽，不悬空。
+     用伪元素而非 filter——filter 会把 .vol 的 preserve-3d 压平。 */
+  .bk::after {
+    content: ""; position: absolute; left: 5%; right: 5%; bottom: -3px; height: 16px; z-index: -1;
+    background: radial-gradient(ellipse at 50% 50%, rgba(12, 6, 1, .5), transparent 68%);
+    pointer-events: none;
+  }
+  /* 体积：默认「平躺」不建 3D（front 就是一张平封面，离屏成本≈一张图）；
+     进视口才 preserve-3d 立起来，静立时微侧露出一点左书脊显厚度 */
+  .bk .vol { position: absolute; inset: 0; transition: transform .42s var(--ease); }
+  .bk.inview .vol {
+    transform-style: preserve-3d;
+    transform: rotateY(-9deg) rotateX(1deg);
+  }
+  .bk .f { position: absolute; }
+  /* 离屏只画正面，三个侧面一律不建图层、不参与合成 */
+  .bk .f-spine, .bk .f-pages, .bk .f-back { display: none; }
+  .bk.inview .f-spine, .bk.inview .f-pages, .bk.inview .f-back { display: block; }
+
+  /* 正面（封面）。离屏时无 transform、平铺满一本书；进视口才推到厚度的一半处 */
+  .bk .f-front {
+    inset: 0; overflow: hidden;
+    border-radius: 2px 4px 4px 2px;
+    background: linear-gradient(160deg, #4A4036, #2A231B);  /* 无封面时的书壳 */
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 8px 14px rgba(15,8,2,.5);
+    transition: box-shadow .34s var(--ease);
+    backface-visibility: hidden;
+  }
+  .bk.inview .f-front { transform: translateZ(calc(var(--t) / 2)); }
+  .bk .f-front img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* 封面受光：书脊侧一道浅折痕 + 顶部柔光 */
+  .bk .f-front::after {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,.16), transparent 8%),
+      linear-gradient(115deg, rgba(255,255,255,.12), transparent 34%);
+  }
+  /* 左书脊：微鼓的弧面，颜色取自封面（--cov，JS 取封面左缘平均色），与封面连续不分缝 */
+  .bk .f-spine {
+    top: 0; bottom: 0; left: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(-90deg);
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--cov, #241C12) 50%, #000) 0%,     /* 外侧铰链最暗 */
+      var(--cov, #241C12) 45%,                                  /* 脊面主体 */
+      color-mix(in srgb, var(--cov, #2E2418) 88%, #fff) 68%,    /* 弧面受光带 */
+      var(--cov, #241C12) 100%);                                /* 接封面端 ≈ 封面色 */
+    border-radius: 3px 0 0 3px;
+    box-shadow: inset -1px 0 2px rgba(255,255,255,.18);
+  }
+  /* 右书口：米白页叠 + 细线 */
+  .bk .f-pages {
+    top: 1px; bottom: 1px; right: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(90deg);
+    background: repeating-linear-gradient(90deg, #f2ede2 0 1.5px, #d7d0c0 1.5px 3px);
+    border-radius: 0 2px 2px 0;
+  }
+  /* 封底：基本看不到，翻转瞬间不穿帮，跟着封面色走、略深 */
+  .bk .f-back {
+    inset: 0;
+    transform: translateZ(calc(var(--t) / -2)) rotateY(180deg);
+    background: linear-gradient(160deg,
+      color-mix(in srgb, var(--cov, #241C12) 72%, #000),
+      color-mix(in srgb, var(--cov, #181209) 52%, #000));
+    border-radius: 4px 2px 2px 4px;
+  }
+
+  /* 书根投在层板上的小片阴影 */
+  .bk .base {
+    position: absolute; left: 4%; right: 4%; bottom: -6px; height: 8px; z-index: 1;
+    background: radial-gradient(50% 60% at 50% 40%, rgba(0,0,0,.55), transparent 72%);
+    pointer-events: none; transition: all .34s var(--ease);
+  }
+  /* 无封面时封面中央压一个印章式书名首字 */
+  .bk.no-cover .f-front { display: flex; align-items: center; justify-content: center; }
+  .bk .stamp {
+    display: none;
+    width: 46%; aspect-ratio: 1; border: 1.5px solid rgba(236,229,214,.5); border-radius: 5px;
+    color: rgba(236,229,214,.85); font-family: var(--serif); font-weight: 900;
+    font-size: calc(var(--book-w) * 0.3); align-items: center; justify-content: center;
+    letter-spacing: 0; text-align: center; line-height: 1;
+  }
+  .bk.no-cover .stamp { display: flex; }
+  /* 图片尚在传输时也给书一个可读的封面，绝不露出空壳；load 事件到达后再让位给真封面。 */
+  .bk.has-cover:not(.cover-ready) .f-front { display: flex; align-items: center; justify-content: center; }
+  .bk.has-cover:not(.cover-ready) .stamp { display: flex; position: relative; z-index: 3; }
+
+  /* hover：书抽出层板、转向你把书脊亮出来、抬起投下更深的影——像被一只手拿起 */
+  .bk:hover, .bk:focus-visible {
+    transform: translateY(-14px) rotate(0deg) scale(1.04);
+    z-index: 8; filter: brightness(1.05);
+  }
+  .bk.inview:hover .vol, .bk.inview:focus-visible .vol {
+    transform: rotateY(-24deg) rotateX(0deg) translateZ(7px);
+  }
+  .bk:hover .f-front, .bk:focus-visible .f-front { box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 22px 34px rgba(15,8,2,.6); }
+  .bk:hover .base, .bk:focus-visible .base { transform: scaleX(1.15) translateY(6px); opacity: .55; }
+  .bk:focus-visible { outline: 2px solid var(--brass-hi); outline-offset: 4px; border-radius: 3px; }
+
+  /* 选中：封面描一圈黄铜 */
+  .bk.picked .f-front { box-shadow: inset 0 0 0 2.5px var(--brass-hi), 0 0 0 3px rgba(176,141,87,.3), 0 8px 14px rgba(15,8,2,.5); }
+
+  /* 勾选框：压在书上，hover/已选才现身 */
+  .bk .pick {
+    position: absolute; top: 8px; right: 8px; z-index: 9;
+    padding: 5px; cursor: pointer; opacity: 0;
+    transition: opacity .2s var(--ease);
+    background: rgba(38, 26, 12, 0.82); border-radius: 8px;
+  }
+  .bk:hover .pick, .bk.picked .pick { opacity: 1; }
+
+  #empty, #loading { text-align: center; color: var(--ink-3); padding: 100px 0; font-size: 15px; }
+  #empty { display: none; }
+  /* 封面预热器必须留在 DOM 内，浏览器才会把它当成真实图片请求；移到视口外不参与布局。 */
+  #coverWarmup { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+  #coverWarmup img { display: block; width: 1px; height: 1px; }
+  #empty .big { font-size: 44px; margin-bottom: 14px; opacity: .5; }
+  #emptyReset { margin-top: 22px; color: var(--ink-2); border-color: var(--line); background: var(--paper-card); }
+
+  /* ---------- 悬停导读卡：抽书看封底。鼠标扫过一本书，旁边浮出书名/作者/梗概 ----------
+     永远 pointer-events:none：它只是预览，绝不挡在书上抢点击；点击仍直接进详情弹窗。 */
+  #previewCard {
+    position: fixed; z-index: 80; width: 330px; max-width: calc(100vw - 24px);
+    display: flex; gap: 14px; padding: 14px;
+    background: var(--paper-card);
+    border: 1px solid var(--line); border-radius: var(--radius-m);
+    box-shadow: 0 20px 50px rgba(40, 24, 6, 0.35), 0 2px 0 rgba(255,255,255,.5) inset;
+    pointer-events: none;
+    visibility: hidden; opacity: 0; transform: translateY(6px);
+    transition: opacity .22s var(--ease), transform .22s var(--ease), visibility 0s linear .22s;
+    --arrow-y: 50%;
+  }
+  #previewCard.show { visibility: visible; opacity: 1; transform: translateY(0); transition-delay: 0s; }
+  /* 指向那本书的小箭头（菱角），随书的位置上下对齐 */
+  #previewCard .pc-arrow {
+    position: absolute; top: var(--arrow-y); width: 13px; height: 13px;
+    transform: translateY(-50%) rotate(45deg);
+    background: var(--paper-card); border: 1px solid var(--line);
+  }
+  #previewCard[data-side="right"] .pc-arrow { left: -7px; border-top: none; border-right: none; }
+  #previewCard[data-side="left"] .pc-arrow { right: -7px; border-bottom: none; border-left: none; }
+
+  #previewCard .pc-cov {
+    position: relative; flex-shrink: 0; width: 76px; height: 114px;
+    border-radius: 2px 4px 4px 2px; overflow: hidden;
+    background: linear-gradient(160deg, #4A4036, #2A231B);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 6px 12px rgba(15,8,2,.3);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #previewCard .pc-cov img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #previewCard .pc-cov::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 6px;
+    background: linear-gradient(90deg, rgba(0,0,0,.3), rgba(255,255,255,.1) 70%, rgba(0,0,0,.14));
+  }
+  #previewCard .pc-stamp {
+    display: none; width: 55%; aspect-ratio: 1; border: 1.5px solid rgba(236,229,214,.5); border-radius: 4px;
+    color: rgba(236,229,214,.85); font-family: var(--serif); font-weight: 900; font-size: 24px;
+    align-items: center; justify-content: center; line-height: 1;
+  }
+  #previewCard .pc-cov.no-cover img { display: none; }
+  #previewCard .pc-cov.no-cover .pc-stamp { display: flex; }
+
+  #previewCard .pc-body { min-width: 0; flex: 1; }
+  #previewCard .pc-title {
+    font-family: var(--serif); font-weight: 900; font-size: 16.5px; line-height: 1.32;
+    color: var(--ink); letter-spacing: .01em; margin-bottom: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #previewCard .pc-author {
+    font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #previewCard .pc-author::before { content: "〔著〕"; color: var(--seal); font-weight: 600; margin-right: 2px; font-size: .85em; }
+  #previewCard .pc-summary {
+    font-size: 12.8px; line-height: 1.62; color: var(--ink-2); letter-spacing: .005em;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #previewCard .pc-summary.empty { color: var(--ink-3); font-style: italic; }
+  #previewCard .pc-meta {
+    margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft);
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--ink-3);
+    display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  }
+  #previewCard .pc-hint { color: var(--brass-2); white-space: nowrap; }
+
+  /* 来源 / 评分标签：悬停导读卡和详情弹窗共用。来源是墨绿，评分是黄铜底、括号注平台 */
+  .pc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag.src {
+    font-weight: 600; border: none;
+    background: rgba(51,73,59,.14); color: var(--green);
+  }
+  .tag.src::before { content: "来源 · "; color: var(--brass-2); font-weight: 500; }
+  .tag.rate {
+    font-weight: 700; border: none; font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, rgba(228,201,143,.5), rgba(176,141,87,.32));
+    color: #6B4A12;
+  }
+  .tag.rate .plat { font-weight: 500; color: var(--brass-2); }
+
+  /* ---------- 抓手光标：一只跟着鼠标的手，平时张开、按下就握紧 ----------
+     全站启用：整站 cursor:none 藏掉系统光标（!important 压过各按钮的 pointer/default），
+     换成这只手贯穿全站；平时是张开的掌，按下鼠标那一刻握成拳，松开又摊开。 */
+  html, body, body * { cursor: none !important; }
+  #grabHand {
+    position: fixed; left: 0; top: 0; z-index: 300;   /* 压过开场(200)、详情弹窗(100)，手永远在最上层 */
+    width: 22px; height: 22px;
+    pointer-events: none;
+    opacity: 0; transition: opacity .18s var(--ease);
+    will-change: transform;
+  }
+  #grabHand.show { opacity: 1; }
+  /* 内层负责手势，外层只管跟着鼠标平移——两者分开，平移即时、手势有过渡。
+     平滑手套小手（静态 SVG，白芯深边描线），手势靠「张开→握拳」两path切换 + 整数下压。 */
+  #grabHand .gh-in {
+    width: 100%; height: 100%; margin: -5px 0 0 -6px;   /* 让掌心/指尖落在热点 */
+    transform: none;
+    transition: transform .12s var(--ease);
+    filter: drop-shadow(0 2px 3px rgba(30,18,4,.4));
+  }
+  #grabHand svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  /* 张开 / 抓握两张手形切换 */
+  #grabHand .p-open, #grabHand .p-grip { transition: opacity .13s var(--ease); }
+  #grabHand .p-grip { opacity: 0; }
+  #grabHand.grab .p-open { opacity: 0; }
+  #grabHand.grab .p-grip { opacity: 1; }
+  /* 按下鼠标的瞬间：整手垂直下压 1px 使力 */
+  #grabHand.grab .gh-in { transform: translateY(1px); }
+  @media (hover: none), (pointer: coarse) { #grabHand { display: none; } html, body, body * { cursor: auto !important; } }
+
+  /* 磁吸按钮：靠近被吸过去一点。用独立的 CSS translate 属性实现，与元素原有 transform 叠加不打架。 */
+  .magnetic { transition: translate .22s var(--ease); }
+
+  /* ---------- 书房灯光 + 暗角：让整面书墙有纵深 ----------
+     一盏银行家灯从视口顶部垂下暖光，四周与底部缓缓压暗。层 fixed 不动，
+     滚动时书从灯下穿过（顶亮→下暗）产生真实视差。pointer-events:none 不挡交互。 */
+  #roomLight {
+    position: fixed; inset: 0; z-index: 60; pointer-events: none;
+    background:
+      /* 顶部暖光池：像灯从上方照下 */
+      radial-gradient(ellipse 92% 62% at 50% -10%, rgba(255, 214, 150, .20), rgba(255, 208, 140, .07) 42%, transparent 62%),
+      /* 四周与底部暗角：光随距离衰减，房间沉进暖影 */
+      radial-gradient(ellipse 130% 100% at 50% 42%, transparent 52%, rgba(24, 13, 3, .34) 100%);
+    opacity: 1; transition: opacity 1.2s var(--ease);
+  }
+
+  /* ---------- 开灯揭幕开场 ---------- */
+  #intro {
+    position: fixed; inset: 0; z-index: 200; background: #0B0703;
+    display: grid; place-items: center; overflow: hidden;
+    transition: opacity .7s var(--ease);
+  }
+  #intro, #intro * { cursor: auto !important; }   /* 开场期间还回正常光标 */
+  #intro.out { opacity: 0; pointer-events: none; }
+  /* 光团：开灯后绽放充满屏幕的暖光，与常驻 #roomLight 同色 */
+  #introLight {
+    position: absolute; left: 50%; top: -12%; width: 160vmax; height: 160vmax;
+    transform: translate(-50%, 0) scale(.04); opacity: 0; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 222, 160, .95), rgba(255, 206, 132, .5) 34%, rgba(120, 80, 30, .12) 62%, transparent 72%);
+    transition: transform 1.15s cubic-bezier(.22,.7,.32,1), opacity .9s var(--ease);
+    pointer-events: none;
+  }
+  #intro.lit #introLight { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  /* 开场的那盏灯就是常驻的 #lamp：开场时它被提到这里点亮，落幕滑去 hero 标题上方。
+     见上方 .room-lamp / #lamp。 */
+  /* 开场书名：光绽放时浮出 */
+  #introTitle {
+    position: absolute; left: 50%; top: 58%; transform: translate(-50%, 18px);
+    z-index: 2; opacity: 0; text-align: center; pointer-events: none;
+    font-family: var(--serif); color: #F3E7C8; letter-spacing: .14em;
+    transition: opacity .8s var(--ease) .35s, transform .8s var(--ease) .35s;
+    text-shadow: 0 2px 18px rgba(120, 70, 20, .6);
+  }
+  #introTitle .t1 { font-size: 44px; font-weight: 900; }
+  #introTitle .t1 em { font-style: normal; color: #E0A95A; }
+  #introTitle .t2 { margin-top: 10px; font-size: 13px; letter-spacing: .34em; color: rgba(243, 231, 200, .72); }
+  #intro.lit #introTitle { opacity: 1; transform: translate(-50%, 0); }
+  /* 跳过提示 */
+  #introSkip {
+    position: absolute; right: 26px; bottom: 22px; z-index: 2;
+    font-size: 12px; letter-spacing: .2em; color: rgba(243, 231, 200, .5);
+  }
+  @media (prefers-reduced-motion: reduce) { #intro { display: none; } }
+
+  /* ---------- 详情弹窗：从架上取下的一本书 + 摊开的宣纸读书卡 ---------- */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(30, 20, 8, 0.5);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+    opacity: 0; pointer-events: none; transition: opacity .28s var(--ease);
+  }
+  .modal-mask.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    width: 100%; max-width: 940px; max-height: 88vh; overflow: hidden auto;
+    background: var(--paper-card);
+    border: 1px solid var(--line); border-radius: var(--radius-l);
+    position: relative;
+    box-shadow: 0 34px 90px rgba(30, 18, 4, 0.5);
+    transform: translateY(16px) scale(.98); transition: transform .32s var(--ease);
+  }
+  .modal-mask.show .modal { transform: translateY(0) scale(1); }
+  .modal::-webkit-scrollbar { width: 8px; }
+  .modal::-webkit-scrollbar-thumb { background: #C4B393; border-radius: 4px; }
+
+  .modal .m-ambient {
+    position: absolute; inset: -60px; z-index: 0; pointer-events: none;
+    background-size: cover; background-position: center;
+    filter: blur(70px) saturate(1.1) brightness(1.02);
+    opacity: .28;
+  }
+  .modal .m-scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(150deg, rgba(245,240,228,.9), rgba(245,240,228,.86) 55%, rgba(240,234,220,.95));
+  }
+  .modal .m-body {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: 250px 1fr; gap: 50px;
+    padding: 48px 50px 40px; align-items: center;
+  }
+
+  /* 左侧：取下的那本书立在桌上。4.0 起也是真 3D，静立微侧、hover 转向你 */
+  .modal .m-stage { position: relative; aspect-ratio: 2/3; perspective: 1400px; }
+  .modal .m-ground {
+    position: absolute; left: 2%; right: 10%; bottom: -5%; height: 8%;
+    background: radial-gradient(52% 62% at 46% 42%, rgba(40,24,6,.4), rgba(40,24,6,.16) 46%, transparent 72%);
+    pointer-events: none;
+  }
+  .modal .m-book {
+    position: absolute; inset: 0; --t: 30px;
+    transform-style: preserve-3d;
+    transform: rotateY(-22deg) rotateX(1.5deg);
+    transition: transform .5s var(--ease);
+    transform-origin: bottom center;
+  }
+  .modal .m-stage:hover .m-book { transform: rotateY(-9deg) rotateX(0deg) translateY(-8px); }
+  .modal .mf { position: absolute; }
+  .modal .mf-front {
+    inset: 0; overflow: hidden;
+    transform: translateZ(calc(var(--t) / 2));
+    border-radius: 3px 7px 7px 3px;
+    background: linear-gradient(160deg, #4A4036, #2A231B);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), 0 26px 50px rgba(30,16,2,.45);
+    backface-visibility: hidden;
+  }
+  .modal .mf-front img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .modal .mf-front::after {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: linear-gradient(90deg, rgba(0,0,0,.18), transparent 8%), linear-gradient(115deg, rgba(255,255,255,.14), transparent 36%);
+  }
+  .modal .mf-spine {
+    top: 0; bottom: 0; left: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(-90deg);
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--cov, #241C12) 50%, #000) 0%,
+      var(--cov, #241C12) 45%,
+      color-mix(in srgb, var(--cov, #2E2418) 88%, #fff) 68%,
+      var(--cov, #241C12) 100%);
+    border-radius: 3px 0 0 3px;
+    box-shadow: inset -1px 0 2px rgba(255,255,255,.18);
+  }
+  .modal .mf-pages {
+    top: 1px; bottom: 1px; right: calc(var(--t) / -2 - 0.3px); width: calc(var(--t) + 0.6px);
+    transform: rotateY(90deg);
+    background: repeating-linear-gradient(90deg, #f2ede2 0 1.5px, #d7d0c0 1.5px 3px);
+    border-radius: 0 2px 2px 0;
+  }
+  .modal .mf-back {
+    inset: 0;
+    transform: translateZ(calc(var(--t) / -2)) rotateY(180deg);
+    background: linear-gradient(160deg,
+      color-mix(in srgb, var(--cov, #241C12) 72%, #000),
+      color-mix(in srgb, var(--cov, #181209) 52%, #000));
+    border-radius: 7px 3px 3px 7px;
+  }
+  .modal.enter .m-book { animation: mBookIn .55s var(--ease) backwards; }
+  @keyframes mBookIn { from { opacity: 0; transform: rotateY(-48deg) rotateX(3deg) translateY(28px); } to { opacity: 1; transform: rotateY(-22deg) rotateX(1.5deg) translateY(0); } }
+
+  .modal.enter .m-text > * { animation: mTextIn .5s var(--ease) backwards; }
+  .modal.enter .m-text > *:nth-child(1) { animation-delay: .12s; }
+  .modal.enter .m-text > *:nth-child(2) { animation-delay: .18s; }
+  .modal.enter .m-text > *:nth-child(3) { animation-delay: .24s; }
+  .modal.enter .m-text > *:nth-child(4) { animation-delay: .30s; }
+  .modal.enter .m-text > *:nth-child(5) { animation-delay: .36s; }
+  .modal.enter .m-text > *:nth-child(6) { animation-delay: .42s; }
+  .modal.enter .m-text > *:nth-child(7) { animation-delay: .48s; }
+  .modal.enter .m-text > *:nth-child(8) { animation-delay: .54s; }
+  @keyframes mTextIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 760px) {
+    .modal .m-body { grid-template-columns: 1fr; gap: 32px; padding: 40px 30px 30px; }
+    .modal .m-stage { max-width: 200px; margin: 0 auto; width: 100%; }
+  }
+
+  .modal .m-close {
+    position: absolute; top: 18px; right: 18px; z-index: 20;
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--paper-card); color: var(--ink-2); font-size: 17px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .2s var(--ease); line-height: 1;
+    box-shadow: 0 4px 12px rgba(56,34,8,.12);
+  }
+  .modal .m-close:hover { color: var(--seal); border-color: var(--seal); transform: rotate(90deg); }
+
+  .modal .m-idx {
+    font-family: var(--mono); font-size: 12px; color: var(--brass-2);
+    letter-spacing: .14em; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .modal .m-idx::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, var(--brass), transparent); opacity: .6; }
+  .modal .m-title {
+    font-family: var(--serif); font-weight: 900; font-size: 30px;
+    line-height: 1.28; letter-spacing: .01em; margin: 0 0 10px; color: var(--ink);
+  }
+  .modal .m-author { font-size: 15px; color: var(--ink-2); font-weight: 500; margin-bottom: 4px; }
+  .modal .m-author::before { content: "〔著〕"; color: var(--seal); font-weight: 600; margin-right: 3px; font-size: .85em; }
+
+  .modal .m-sec {
+    font-size: 11.5px; font-weight: 700; color: var(--ink-3); letter-spacing: .14em;
+    text-transform: uppercase; margin: 24px 0 10px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .modal .m-sec .fno { font-family: var(--mono); font-weight: 400; color: var(--brass-2); }
+  .modal .m-summary { font-size: 15px; line-height: 1.9; color: var(--ink); letter-spacing: .01em; }
+  .modal .m-summary.empty { color: var(--ink-3); font-style: italic; }
+
+  .modal .m-crumbs { display: flex; flex-wrap: wrap; gap: 7px; }
+  .modal .m-foot {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 30px;
+    padding-top: 22px; border-top: 1px solid var(--line);
+  }
+  .modal .m-download, .modal .m-buy-btn {
+    height: 44px; padding: 0 24px; border: none; cursor: pointer; border-radius: 999px;
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    background: linear-gradient(180deg, var(--brass-hi), var(--brass)); color: #3A2508;
+    box-shadow: 0 4px 14px rgba(58,32,4,.3), 0 1px 0 rgba(255,255,255,.4) inset;
+    transition: all .25s var(--ease); display: inline-flex; align-items: center; gap: 8px;
+  }
+  .modal .m-buy-btn {
+    background: linear-gradient(180deg, #4A6756, var(--green)); color: #F5F0E4;
+    box-shadow: 0 4px 14px rgba(30, 40, 32, .28), 0 1px 0 rgba(255,255,255,.18) inset;
+  }
+  .modal .m-download:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(58,32,4,.38), 0 1px 0 rgba(255,255,255,.4) inset; }
+  .modal .m-buy-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(30,40,32,.36), 0 1px 0 rgba(255,255,255,.2) inset; }
+  .modal .m-download:disabled, .modal .m-buy-btn:disabled { opacity: .55; cursor: default; transform: none; }
+  .modal .m-buy-btn[hidden] { display: none; }
+  .modal .m-path { font-size: 12px; color: var(--ink-3); word-break: break-all; flex: 1; font-family: var(--mono); line-height: 1.5; }
+  .m-download-status { display: none; color: var(--ink-2); font-size: 13px; }
+  body.downloads-disabled .m-download-status { display: block; }
+
+  .buy-shot {
+    position: fixed; inset: 0; z-index: 120;
+    background: rgba(18, 12, 6, 0.72);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 28px 18px; gap: 14px;
+    opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+  }
+  .buy-shot.show { opacity: 1; pointer-events: auto; }
+  .buy-shot img {
+    width: min(420px, 92vw); height: auto; border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45);
+    background: #fff;
+  }
+  .buy-shot .buy-shot-hint {
+    margin: 0; color: #F3E7CF; font-size: 13.5px; letter-spacing: .04em;
+  }
+  .buy-shot .buy-shot-close {
+    position: absolute; top: 18px; right: 22px;
+    width: 42px; height: 42px; border: none; border-radius: 50%; cursor: pointer;
+    background: rgba(243,231,207,.16); color: #F3E7CF; font-size: 18px;
+  }
+  .buy-shot .buy-shot-close:hover { background: rgba(243,231,207,.28); }
+
+  .tag {
+    font-size: 11px; font-weight: 500; padding: 3px 11px; border-radius: 999px;
+    white-space: nowrap; letter-spacing: .01em;
+    background: rgba(51, 73, 59, 0.08); color: var(--ink-2);
+    border: 1px solid var(--line-soft);
+  }
+  .tag.coll { font-weight: 600; border: none; background: rgba(51,73,59,.14); color: var(--green); }
+  .tag.fmt { text-transform: uppercase; letter-spacing: .04em; font-family: var(--mono); }
+
+  /* ---------- 批量选择浮条 ---------- */
+  .sel-bar {
+    position: fixed; left: 50%; bottom: 26px; z-index: 60;
+    display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+    max-width: min(94vw, 760px); padding: 11px 14px 11px 24px;
+    background: linear-gradient(180deg, #6B4726, #553517);
+    border: 1px solid #3A2410; border-radius: var(--radius-l);
+    box-shadow: 0 18px 50px rgba(30, 18, 4, 0.5);
+    opacity: 0; pointer-events: none; transform: translate(-50%, 24px);
+    transition: opacity .3s var(--ease), transform .3s var(--ease);
+  }
+  .sel-bar.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  .sel-bar .sel-info { font-size: 13.5px; color: rgba(243,231,207,.85); white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 4px; }
+  .sel-bar .sel-info b { color: var(--brass-hi); font-weight: 700; font-size: 15px; }
+  .sel-bar .btn { height: 38px; padding: 0 18px; font-size: 13px; }
+
+  #toTop {
+    position: fixed; right: 28px; bottom: 28px; z-index: 40;
+    width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
+    background: var(--paper-card); border: 1px solid var(--line);
+    color: var(--ink); font-size: 18px;
+    opacity: 0; pointer-events: none; transform: translateY(12px);
+    transition: all .3s var(--ease); box-shadow: 0 10px 30px rgba(56,34,8,.2);
+  }
+  #toTop.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  #toTop:hover { transform: translateY(-2px); border-color: var(--brass); box-shadow: 0 10px 30px rgba(176,141,87,.35); }
+
+  @media (max-width: 860px) {
+    /* 窄屏：统计换行、仍居中 */
+    .hero { padding: 48px 22px 26px; }
+    .hero .p-stats { gap: 26px; flex-wrap: wrap; justify-content: center; }
+    .hero .stat + .stat::before { left: -13px; }
+  }
+  @media (max-width: 940px) {
+    .layout { grid-template-columns: 1fr; gap: 26px; }
+    aside { position: static; max-height: none; }
+    .hero { padding: 40px 22px 20px; }
+    .bk .pick { opacity: 1; }
+  }
+  @media (hover: none), (pointer: coarse) {
+    .bk .pick { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* ===== V5 · 沉浸藏书室空间层 ===== */
+  :root { --v5-cyan:#8ad9d1; --v5-gold:#d8b06a; --v5-night:#07100e; }
+  body { background:#0b120f; }
+  body::before { content:""; position:fixed; inset:0; z-index:-8; pointer-events:none; background:
+    radial-gradient(80% 55% at 50% 8%, rgba(220,184,113,.16), transparent 62%),
+    radial-gradient(60% 90% at 50% 70%, rgba(49,85,69,.18), transparent 70%), #07100e; }
+  #v5World { position:fixed; inset:0; z-index:-6; overflow:hidden; pointer-events:none; perspective:1100px; transform-style:preserve-3d; }
+  #v5World .v5-room { position:absolute; inset:-8%; transform-style:preserve-3d; transition:transform .45s cubic-bezier(.2,.75,.2,1); }
+  #v5World .v5-back { position:absolute; inset:7% 5% 3%; transform:translateZ(-260px) scale(1.28); border-radius:42px;
+    background:linear-gradient(180deg,rgba(28,48,40,.72),rgba(9,17,14,.92)), repeating-linear-gradient(90deg,transparent 0 13%,rgba(214,177,103,.055) 13.1% 13.4%);
+    border:1px solid rgba(216,176,106,.11); box-shadow:inset 0 0 120px rgba(0,0,0,.75); }
+  #v5World .v5-wall { position:absolute; top:-8%; bottom:-8%; width:34%; background:linear-gradient(90deg,rgba(75,48,26,.92),rgba(26,24,18,.2)); opacity:.8; }
+  #v5World .v5-wall.left { left:-18%; transform:rotateY(58deg) translateZ(-120px); transform-origin:right center; }
+  #v5World .v5-wall.right { right:-18%; transform:rotateY(-58deg) translateZ(-120px); transform-origin:left center; }
+  #v5World .v5-floor { position:absolute; left:-12%; right:-12%; bottom:-32%; height:62%; transform:rotateX(68deg) translateZ(-90px);
+    background:linear-gradient(180deg,rgba(100,68,38,.4),rgba(12,14,11,.92)), repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 8%); transform-origin:center top; }
+  #v5World .v5-orbit { position:absolute; left:50%; top:38%; width:min(70vw,940px); aspect-ratio:1; border-radius:50%; border:1px solid rgba(216,176,106,.14);
+    transform:translate(-50%,-50%) rotateX(74deg) translateZ(-40px); box-shadow:0 0 80px rgba(216,176,106,.08), inset 0 0 80px rgba(216,176,106,.06); }
+  #v5Dust { position:absolute; inset:0; width:100%; height:100%; opacity:.56; }
+  header { background:linear-gradient(180deg,rgba(50,35,22,.82),rgba(26,24,19,.72)); backdrop-filter:blur(18px) saturate(1.2); border-bottom-color:rgba(228,201,143,.16); }
+  .hero { min-height:72vh; justify-content:center; background-color:transparent; background-image:
+    linear-gradient(180deg,rgba(8,15,12,.16),rgba(8,15,12,.48)),
+    radial-gradient(55% 54% at 50% 34%,rgba(255,221,153,.28),transparent 70%); color:#efe5cf; overflow:hidden; }
+  .hero::before { content:""; position:absolute; inset:9% 7% 12%; border-radius:42px; border:1px solid rgba(228,201,143,.14);
+    background:linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.005)); box-shadow:inset 0 0 80px rgba(228,201,143,.035),0 30px 100px rgba(0,0,0,.28); backdrop-filter:blur(2px); }
+  .hero > * { position:relative; z-index:2; }
+  .hero h2 { color:#f1e7d2; text-shadow:0 12px 40px rgba(0,0,0,.48); }
+  .hero .p-sub,.hero .stat .lbl { color:rgba(241,231,210,.62); }
+  .hero .stat .num { color:#dbb671; }
+  .hero .p-kicker { color:#dcb875; }
+  .layout { position:relative; z-index:3; }
+  aside { background:rgba(244,236,218,.89); backdrop-filter:blur(18px) saturate(1.06); box-shadow:0 22px 80px rgba(0,0,0,.14); }
+  .bk { transform-style:preserve-3d; transition:transform .4s cubic-bezier(.2,.7,.2,1), filter .3s ease; will-change:transform; }
+  .bk:hover { filter:drop-shadow(0 26px 26px rgba(29,18,8,.28)); }
+  .shelf-row { perspective:1400px; }
+  .modal { background:rgba(245,240,228,.94); backdrop-filter:blur(22px) saturate(1.08); border-color:rgba(176,141,87,.3); }
+  .v5-badge { display:inline-flex; align-items:center; gap:8px; margin-top:14px; padding:7px 12px; border:1px solid rgba(216,176,106,.28); border-radius:999px;
+    color:rgba(244,233,209,.72); background:rgba(8,15,12,.28); font:600 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; backdrop-filter:blur(12px); }
+  .v5-badge i { width:6px; height:6px; border-radius:50%; background:#d8b06a; box-shadow:0 0 12px rgba(216,176,106,.9); }
+  @media(max-width:940px){ #v5World .v5-wall{opacity:.42}.hero{min-height:62vh}.hero::before{inset:7% 4% 10%;border-radius:28px} }
+  @media(prefers-reduced-motion:reduce){#v5World .v5-room{transform:none!important}.bk{transform:none!important}}
+</style>
+<link rel="stylesheet" href="immersive.css">
+</head>
+<body>
+<div id="v5World" aria-hidden="true">
+  <div class="v5-room">
+    <div class="v5-back"></div><div class="v5-wall left"></div><div class="v5-wall right"></div><div class="v5-floor"></div><div class="v5-orbit"></div>
+    <canvas id="v5Dust"></canvas>
+  </div>
+</div>
+
+<!-- 开灯揭幕开场：全屏先暗，那盏常驻的 #lamp 被提到暗场中央点亮，暖光绽放照亮书房。
+     落幕时灯不消失，而是滑到 hero 大标题上方固定。每次会话只播一次，可点/键/滚跳过 -->
+<div id="intro" aria-hidden="true">
+  <div id="introLight"></div>
+  <div id="introTitle">
+    <div class="t1">藏书<em>阁</em></div>
+    <div class="t2">沉浸藏书室 · 第伍版</div>
+  </div>
+  <div id="introSkip">点击任意处进入</div>
+</div>
+<div id="coverWarmup" aria-hidden="true"></div>
+
+<header>
+  <div class="header-inner">
+    <a class="brand" href="#">
+      <span class="lampdot"></span>
+      <span>
+        <span class="bt">藏书阁</span><br>
+        <span class="bv">PREVIEW 5.0</span>
+      </span>
+    </a>
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+      <input id="search" type="text" placeholder="搜书名或作者" autocomplete="off">
+    </div>
+    <div class="header-actions">
+      <span id="count" aria-live="polite"></span>
+      <button class="btn ghost" id="eighteenBtn" aria-pressed="false" title="懿十八橱窗里、书库已有的书">十八推荐</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div id="v5Immersive" aria-hidden="true">
+    <div class="v5-hover-card" id="v5HoverCard"><b>藏书</b><span>点击抽出这本书</span></div>
+    <div class="v5-webgl-fallback" id="v5WebglFallback">空间模式已降级 · 仍可正常浏览</div>
+  </div>
+  <!-- 常驻书房灯：全场唯一的一盏灯。默认落位在这个锚点里（标题上方）；开场时 JS 把 #lamp 提到暗场中央点亮，落幕再滑回落位 -->
+  <div class="room-lamp" id="roomLamp" aria-hidden="true">
+    <div id="lamp">
+      <svg viewBox="0 0 150 190" fill="none">
+        <!-- 顶部垂下的灯杆 -->
+        <rect x="73" y="0" width="4" height="58" fill="#3A2A16"/>
+        <!-- 银行家灯罩（墨绿），开口朝下 -->
+        <path d="M30 96 Q75 46 120 96 L112 104 Q75 66 38 104 Z" fill="#2E4638" stroke="#1E2E24" stroke-width="2"/>
+        <path d="M38 104 Q75 66 112 104 Q75 88 38 104 Z" fill="#22352A"/>
+        <!-- 灯泡 + 光晕（落位态常亮） -->
+        <circle class="bulb" cx="75" cy="100" r="9" fill="#FFE7B0"/>
+        <circle class="glow" cx="75" cy="100" r="26" fill="url(#roomBulbGlow)"/>
+        <defs>
+          <radialGradient id="roomBulbGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="rgba(255,224,160,.9)"/>
+            <stop offset="60%" stop-color="rgba(255,208,132,.32)"/>
+            <stop offset="100%" stop-color="rgba(255,208,132,0)"/>
+          </radialGradient>
+        </defs>
+      </svg>
+    </div>
+  </div>
+  <div class="p-left">
+    <div class="p-kicker">第伍版 · 沉浸藏书室</div>
+    <h2>藏书<em>阁</em></h2>
+    <div class="p-tbar"></div>
+    <div class="p-sub">垂类深耕 · 好评拓展 —— 从书柜墙走进一间会呼吸的私人藏书室</div>
+    <div class="v5-badge"><i></i> IMMERSIVE LIBRARY · SPATIAL EDITION</div>
+  </div>
+  <div class="p-stats">
+    <div class="stat"><div class="num red" id="statTotal">–</div><div class="lbl">藏书总数</div></div>
+    <div class="stat"><div class="num" id="statLeft">–</div><div class="lbl" id="statLeftLbl">垂类书籍</div></div>
+    <div class="stat"><div class="num" id="statRight">–</div><div class="lbl" id="statRightLbl">拓展好评书籍</div></div>
+  </div>
+  <div class="v5-space-hud">
+    <button type="button" class="v5-enter" id="v5EnterRoom">进入书房</button>
+    <div class="v5-room-hint"><i></i> 移动视角 · 悬停书脊 · 点击抽书</div>
+  </div>
+</section>
+
+<div class="layout">
+  <aside>
+    <div class="side-head">
+      <h2>目录</h2>
+      <button id="clearFilters">清空</button>
+    </div>
+    <div id="filters"><div class="filters-loading" style="padding:20px 0;">载入中…</div></div>
+  </aside>
+
+  <main>
+    <div id="grid"></div>
+    <div id="empty"><div class="big">◎</div><div id="emptyText" role="status" aria-live="polite">没有找到匹配的书籍</div><button class="btn ghost" id="emptyReset" hidden>查看全部书籍</button></div>
+    <div id="loading">正在载入书籍…</div>
+  </main>
+</div>
+
+<button id="toTop" title="回到顶部">↑</button>
+
+<!-- 书房灯光：顶部暖光池 + 四周暗角，fixed 不动，滚动时书从灯下穿过产生纵深 -->
+<div id="roomLight" aria-hidden="true"></div>
+
+<!-- 抓手光标：一只跟着鼠标的手。平时张开，按下鼠标就握紧成拳 -->
+<div id="grabHand" aria-hidden="true">
+  <div class="gh-in">
+    <svg viewBox="0 0 32 32" fill="none">
+      <!-- 平滑手套小手：白芯 #FFF + 深边 #221708 描线。张开 / 握拳两 path 切换 -->
+      <g class="p-open" fill="#FFFFFF" stroke="#221708" stroke-width="1.6" stroke-linejoin="round">
+        <rect x="10.3" y="4.5" width="3" height="9" rx="1.5"/>
+        <rect x="13.8" y="3" width="3" height="10.5" rx="1.5"/>
+        <rect x="17.3" y="4" width="3" height="9.5" rx="1.5"/>
+        <rect x="20.8" y="6.5" width="2.7" height="7" rx="1.35"/>
+        <rect x="4.5" y="12" width="7.5" height="3.4" rx="1.7" transform="rotate(-32 8 13.5)"/>
+        <rect x="9" y="12" width="14.5" height="14" rx="6.5"/>
+      </g>
+      <g class="p-grip" fill="#FFFFFF" stroke="#221708" stroke-width="1.6" stroke-linejoin="round">
+        <rect x="10.3" y="8.5" width="3" height="6" rx="1.5"/>
+        <rect x="13.8" y="8" width="3" height="6.5" rx="1.5"/>
+        <rect x="17.3" y="8.5" width="3" height="6" rx="1.5"/>
+        <rect x="20.8" y="9.5" width="2.7" height="5.5" rx="1.35"/>
+        <rect x="9" y="13" width="14.5" height="12.5" rx="6"/>
+        <rect x="9.5" y="13" width="12" height="3.6" rx="1.8"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<aside id="previewCard" aria-hidden="true">
+  <span class="pc-arrow"></span>
+  <div class="pc-cov" id="pcCov"><img id="pcImg" alt=""><span class="pc-stamp" id="pcStamp"></span></div>
+  <div class="pc-body">
+    <div class="pc-title" id="pcTitle"></div>
+    <div class="pc-author" id="pcAuthor"></div>
+    <div class="pc-summary" id="pcSummary"></div>
+    <div class="pc-tags" id="pcTags"></div>
+    <div class="pc-meta"><span id="pcMeta"></span><span class="pc-hint">点击查看详情 →</span></div>
+  </div>
+</aside>
+
+<div class="modal-mask" id="modalMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="m-ambient" id="mAmbient"></div>
+    <div class="m-scrim"></div>
+    <button class="m-close" id="modalClose" title="关闭">✕</button>
+    <div class="m-body">
+      <div class="m-stage">
+        <span class="m-ground"></span>
+        <div class="m-book" id="mBook">
+          <div class="mf mf-back"></div>
+          <div class="mf mf-spine"></div>
+          <div class="mf mf-pages"></div>
+          <div class="mf mf-front"><img id="mCover" alt=""></div>
+        </div>
+      </div>
+      <div class="m-text">
+        <div class="m-idx" id="mIdx"></div>
+        <h3 class="m-title" id="mTitle"></h3>
+        <div class="m-author" id="mAuthor"></div>
+        <div class="m-sec"><span class="fno">01</span>内容简介</div>
+        <div class="m-summary" id="mSummary"></div>
+        <div class="m-sec"><span class="fno">02</span>分类信息</div>
+        <div class="m-crumbs" id="mCrumbs"></div>
+        <div class="m-foot">
+          <button class="m-download" id="mDownload">下载书籍 ↓</button>
+          <button type="button" class="m-buy-btn" id="mBuy" hidden>购买链接</button>
+          <div class="m-download-status" id="mDownloadStatus">当前仅提供书籍预览，下载暂未开放。</div>
+          <div class="m-path" id="mPath"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="buy-shot" id="buyShot" aria-hidden="true">
+  <button type="button" class="buy-shot-close" id="buyShotClose" title="关闭">✕</button>
+  <img id="buyShotImg" alt="懿十八的抖音橱窗">
+  <p class="buy-shot-hint">保存图片到相册，打开抖音搜索页扫一扫</p>
+</div>
+
+<div class="sel-bar" id="selBar">
+  <div class="sel-info">已选 <b id="selCount">0</b> 本<span id="selMeta"> · 共约 <span id="selSize">0 MB</span></span></div>
+  <button class="btn ghost" id="pickAll" title="选中当前筛选出的全部书籍">全选</button>
+  <button class="btn ghost" id="selInvert" title="在当前筛选结果里反选">反选</button>
+  <button class="btn ghost" id="selClear">清空选择</button>
+  <button class="btn ghost static-only" id="selExport" title="导出清单">导出清单</button>
+  <button class="btn ghost" id="selCancel" hidden>取消</button>
+  <button class="btn primary" id="selDownload">下载选中 ↓</button>
+</div>
+
+<script src="filter_state.js"></script>
+<script src="three.min.js"></script>
+<script src="immersive.js"></script>
+<script>
+let allBooks = [];
+let filtersData = { collections: {}, formats: [] };
+
+// 纯静态部署没有 /api，启动时探一次就定下走哪条路。同一份页面本地和线上都能跑。
+let staticMode = false;
+let siteConfig = { downloadBase: "" };
+
+// 挂载点自适应：页面在 /v4/ 下时，封面与静态 JSON 都在上一级，走 ../ 前缀；
+// 部署到站点根目录时它们就在同目录，前缀为空。filter_state.js 放了同目录副本。
+const ASSET_PREFIX = location.pathname.includes("/v5/") ? "../" : "";
+
+const sel = {
+  collections: new Set(), groups: new Set(), categories: new Set(),
+  subcategories: new Set(), formats: new Set(), keyword: "",
+};
+
+const picked = new Set();
+let shownBooks = [];
+let eighteenOn = false;
+const EIGHTEEN_BUY_IMG = (location.pathname.includes("/v5/") ? "" : "v5/") + "eighteen-douyin.png";
+
+function eighteenTitle(b) {
+  return String(b && b.title || "").replace(/\s+/g, "");
+}
+const EIGHTEEN_REC = [
+  { id: "内容算法", match: (t, p) => t.startsWith("内容算法") || p.includes("内容算法把内容变成价值的效率系统") },
+  { id: "算法之美", match: (t, p) => t === "算法之美" || /(?:^|[\\/])算法之美 /.test(p) },
+  { id: "深度学习推荐系统", match: (t) => t === "深度学习推荐系统" },
+  { id: "史蒂夫·乔布斯传", match: (t) => t === "史蒂夫·乔布斯传" || t.startsWith("史蒂夫·乔布斯传") },
+  { id: "随机漫步的傻瓜", match: (t) => t === "随机漫步的傻瓜" },
+  { id: "心流", match: (t) => t.startsWith("心流：") || t.startsWith("心流:") },
+  { id: "薛兆丰经济学讲义", match: (t) => t.startsWith("薛兆丰经济学讲义") },
+  { id: "蛤蟆先生去看心理医生", match: (t) => t.startsWith("蛤蟆先生去看心理医生") },
+  { id: "人类群星闪耀时", match: (t) => t === "人类群星闪耀时" },
+  { id: "黑天鹅", match: (t) => t.startsWith("黑天鹅") && !t.includes("语录") },
+  { id: "纳瓦尔宝典", match: (t) => t.startsWith("纳瓦尔宝典") },
+  { id: "思考，快与慢", match: (t) => t.replace(/[，,]/g, "") === "思考快与慢" || t.startsWith("思考，快与慢") || t.startsWith("思考,快与慢") },
+  { id: "底层逻辑", match: (t) => t.startsWith("底层逻辑：看清这个世界的底牌") || t.startsWith("底层逻辑看清这个世界的底牌") },
+  { id: "熵增定律", match: (t) => t === "熵增定律" },
+  { id: "熵减法则", match: (t) => t.startsWith("熵减法则") },
+];
+function isEighteenBook(b) {
+  const t = eighteenTitle(b);
+  const p = String(b && b.path || "");
+  return EIGHTEEN_REC.some(rec => rec.match(t, p));
+}
+function eighteenBooks(list) {
+  const out = [];
+  const used = new Set();
+  for (const rec of EIGHTEEN_REC) {
+    const hit = list.find(b => !used.has(b.path) && rec.match(eighteenTitle(b), String(b.path || "")));
+    if (hit) { used.add(hit.path); out.push(hit); }
+  }
+  return out;
+}
+function syncEighteenBtn() {
+  const btn = $("#eighteenBtn");
+  if (!btn) return;
+  btn.classList.toggle("on", eighteenOn);
+  btn.setAttribute("aria-pressed", eighteenOn ? "true" : "false");
+}
+function leaveEighteen() {
+  if (!eighteenOn) return;
+  eighteenOn = false;
+  syncEighteenBtn();
+}
+let lastPerRow = 0;   // renderShelves 里记录的每行本数，resize 守卫用
+const bookByPath = new Map();   // 当前已渲染的书：path -> 书籍对象，悬停导读卡查它
+
+const $ = (s) => document.querySelector(s);
+const grid = $("#grid"), emptyEl = $("#empty"), loadingEl = $("#loading");
+
+// 与 CSS 的 --book-w / --book-gap 保持一致：切分层板时按这个宽度算每行能放几本。
+const BOOK_W = 104;
+const BOOK_GAP = 18;
+const ROW_SIDE_PAD = 24;   // .row 的左右 padding 之和
+
+// 404 和「返回的不是 JSON」都算失败：有些静态托管会拿 HTML 兜底未知路径
+function getJSON(url) {
+  return fetch(url).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  });
+}
+
+/* 开场期间建立完整封面缓存。切换筛选会重建书架 DOM，不能依赖新 <img> 的 lazy
+   请求；必须先把资源送进浏览器缓存，再允许开场幕布撤掉。并发控制在 24 条，避免
+   2500 张图同时解码抢掉主线程。 */
+let coverPreloadStarted = false;
+let coverPreloadDone = false;
+let coverPreloadResolve;
+const coverPreloadReady = new Promise((resolve) => { coverPreloadResolve = resolve; });
+let coverFirstPaintDone = false;
+let coverFirstPaintResolve;
+const coverFirstPaintReady = new Promise((resolve) => { coverFirstPaintResolve = resolve; });
+function updateCoverProgress(done, total) {
+  const hint = $("#introSkip");
+  if (hint && !coverPreloadDone) hint.textContent = `封面准备 ${done} / ${total}`;
+  if (loadingEl && !coverPreloadDone) loadingEl.textContent = `正在准备封面 ${done} / ${total}`;
+}
+function preloadCovers() {
+  if (coverPreloadStarted) return coverPreloadReady;
+  coverPreloadStarted = true;
+  const seen = new Set();
+  const urls = [];
+  const push = (b) => {
+    if (b.cover && !seen.has(b.cover)) { seen.add(b.cover); urls.push(ASSET_PREFIX + encodeURI(b.cover)); }
+  };
+  // 两个书库各先备好首屏（48 本），切换“书库类型”时不用再看空书架；其余后台补齐。
+  ["垂类书籍", "拓展好评书籍"].forEach((collection) =>
+    allBooks.filter((book) => book.collection === collection).slice(0, 48).forEach(push));
+  allBooks.forEach(push);                                       // 其余全部后台补齐
+  const settle = () => {
+    coverPreloadDone = true;
+    const hint = $("#introSkip");
+    if (hint) hint.textContent = "点击任意处进入";
+    coverPreloadResolve();
+  };
+  const settleFirstPaint = () => {
+    if (coverFirstPaintDone) return;
+    coverFirstPaintDone = true;
+    coverFirstPaintResolve();
+  };
+  if (!urls.length) { settleFirstPaint(); settle(); return coverPreloadReady; }
+  const firstPaintTarget = Math.min(96, urls.length);
+  let completed = 0;
+  const warmup = $("#coverWarmup");
+  warmup.replaceChildren();
+  let cursor = 0;
+  const loadOne = (url) => new Promise((resolve) => {
+    const image = new Image();
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      completed += 1;
+      if (completed >= firstPaintTarget) settleFirstPaint();
+      if (completed === urls.length || completed % 24 === 0) updateCoverProgress(completed, urls.length);
+      resolve();
+    };
+    image.loading = "eager";
+    image.fetchPriority = "high";
+    image.decoding = "async";
+    image.onload = done;
+    image.onerror = done;       // 坏图不能卡住整个开场
+    image.src = url;
+    warmup.appendChild(image);   // 必须进 DOM，不能交给离屏资源调度
+    if (image.complete) queueMicrotask(done);
+  });
+  const worker = async () => {
+    while (cursor < urls.length) await loadOne(urls[cursor++]);
+  };
+  // 不把两千多张图同时标成 high priority；并发 12 条保证首批立即开始且不会淹没本地服务。
+  Promise.all(Array.from({ length: Math.min(12, urls.length) }, worker)).then(settle, settle);
+  return coverPreloadReady;
+}
+
+async function loadAll() {
+  loadingEl.style.display = "block";
+  let booksRes, filtersRes;
+  try {
+    [booksRes, filtersRes] = await Promise.all([
+      getJSON("/api/books"), getJSON("/api/filters"),
+    ]);
+  } catch {
+    staticMode = true;
+    document.body.classList.add("static-mode");
+    [booksRes, filtersRes, siteConfig] = await Promise.all([
+      getJSON(ASSET_PREFIX + "books.json"), getJSON(ASSET_PREFIX + "filters.json"),
+      getJSON(ASSET_PREFIX + "config.json").catch(() => siteConfig),
+    ]);
+  }
+  allBooks = booksRes.books;
+  filtersData = filtersRes;
+  const alive = new Set(allBooks.map(b => b.path));
+  for (const p of [...picked]) if (!alive.has(p)) picked.delete(p);
+  syncDownloadAvailability();
+  renderStats();
+  renderFilters();
+  preloadCovers();
+  loadingEl.style.display = "none";
+  applyDefaultGroup();   // 首次进入默认点开「右手书籍」
+  applyFilters();
+}
+
+// 首次进入默认选中「右手书籍」这一阅读方向，让书架一进来就有内容、且落在主推的一侧。
+// 只在第一次载入时套一次默认，之后用户自己改的筛选（或重新扫描）不被它冲掉。
+let didDefaultGroup = false;
+function applyDefaultGroup() {
+  if (didDefaultGroup) return;
+  didDefaultGroup = true;
+  const keys = [...new Set(
+    allBooks.filter(b => (b.group || "").includes("右手")).map(b => gk(b.collection, b.group))
+  )];
+  if (keys.length) BookFilterState.selectGroups(sel, keys);   // sel.groups 为空，selectGroups 即为选中
+}
+
+function renderStats() {
+  const colls = Object.keys(filtersData.collections);
+  animateNum($("#statTotal"), allBooks.length);
+  animateNum($("#statLeft"), countOf(b => b.collection === colls[0]));
+  animateNum($("#statRight"), countOf(b => b.collection === colls[1]));
+  $("#statLeftLbl").textContent = colls[0] || "—";
+  $("#statRightLbl").textContent = colls[1] || "—";
+}
+function animateNum(el, target) {
+  if (!el) return;
+  const t0 = performance.now(), dur = 900;
+  (function tick(t) {
+    const p = Math.min((t - t0) / dur, 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+const gk = BookFilterState.groupKey;
+const ck = BookFilterState.categoryKey;
+const sk = BookFilterState.subcategoryKey;
+
+function appendFilterHint(box, text) {
+  const hint = document.createElement("p");
+  hint.className = "filter-hint";
+  hint.textContent = text;
+  box.appendChild(hint);
+}
+
+function renderFilters() {
+  const box = $("#filters");
+  box.innerHTML = "";
+  const colls = Object.keys(filtersData.collections);
+
+  const tWrap = document.createElement("div");
+  tWrap.className = "filter-group";
+  tWrap.innerHTML = '<div class="fg-title"><span class="fno">01</span>书库类型</div>';
+  const tChips = document.createElement("div");
+  tChips.className = "chips stack";
+  tChips.appendChild(makeChip("全部", allBooks.length, !sel.collections.size, () => {
+    leaveEighteen();
+    BookFilterState.selectAll(sel);
+    renderFilters(); applyFilters();
+  }, "all", "all"));
+  for (const coll of colls) {
+    const n = countOf(b => b.collection === coll);
+    tChips.appendChild(makeChip(coll, n, sel.collections.has(coll), () => {
+      leaveEighteen();
+      BookFilterState.selectCollection(sel, coll);
+      renderFilters(); applyFilters();
+    }, coll, "coll"));
+  }
+  tWrap.appendChild(tChips);
+  box.appendChild(tWrap);
+
+  const selectedCollection = sel.collections.size === 1 ? [...sel.collections][0] : null;
+
+  const gWrap = document.createElement("div");
+  gWrap.className = "filter-group";
+  gWrap.innerHTML = '<div class="fg-title"><span class="fno">02</span>阅读方向</div>';
+  const gChips = document.createElement("div");
+  gChips.className = "chips direction-grid";
+  const scopeBooks = allBooks.filter(b => !selectedCollection || b.collection === selectedCollection);
+  const groupNames = [...new Set(scopeBooks.map(b => b.group).filter(Boolean))];
+  for (const group of groupNames) {
+    const groupKeys = [...new Set(scopeBooks.filter(b => b.group === group).map(b => gk(b.collection, b.group)))];
+    const on = groupKeys.length > 0 && groupKeys.every(key => sel.groups.has(key)) && sel.groups.size === groupKeys.length;
+    gChips.appendChild(makeChip(group, scopeBooks.filter(b => b.group === group).length, on, () => {
+        leaveEighteen();
+        BookFilterState.selectGroups(sel, groupKeys);
+        renderFilters(); applyFilters();
+      }, group, "group"));
+  }
+  if (!groupNames.length) appendFilterHint(gWrap, "该书库暂无阅读方向。");
+  gWrap.appendChild(gChips);
+  box.appendChild(gWrap);
+  bindMagnetic(box);   // chip 每次重建后重绑磁吸（WeakSet 去重）
+
+  const cWrap = document.createElement("div");
+  cWrap.className = "filter-group";
+  const selectedGroupNames = [...new Set([...sel.groups].map(key => key.split("|")[1]).filter(Boolean))];
+  const selectedGroup = selectedGroupNames.length === 1 ? selectedGroupNames[0] : null;
+  cWrap.innerHTML = `<div class="fg-title"><span class="fno">03</span>${selectedGroup ? esc(selectedGroup) + "分类" : "具体分类"}</div>`;
+  if (!selectedGroup) {
+    appendFilterHint(cWrap, scopeBooks.length
+      ? "请选择左手书籍或右手书籍，具体分类会随之切换。"
+      : "该书库暂无具体分类。");
+    box.appendChild(cWrap);
+    return;
+  }
+  const catList = document.createElement("div");
+  catList.className = "cat-list";
+  const groupBooks = scopeBooks.filter(b => b.group === selectedGroup);
+  const categoryNames = [...new Set(groupBooks.map(b => b.category).filter(Boolean))];
+  for (const cat of categoryNames) {
+    const categoryBooks = groupBooks.filter(b => b.category === cat);
+    const categoryKeys = [...new Set(categoryBooks.map(b => ck(b.collection, b.group, b.category)))];
+    catList.appendChild(makeOpt(cat, categoryKeys.length > 0 && categoryKeys.every(key => sel.categories.has(key)), (on) => {
+      leaveEighteen();
+      for (const key of categoryKeys) on ? sel.categories.add(key) : sel.categories.delete(key);
+      applyFilters();
+    }, categoryBooks.length));
+    const subs = [...new Set(categoryBooks.map(b => b.subcategory).filter(Boolean))];
+    if (subs.length) {
+      const det = document.createElement("details");
+      det.className = "subcat";
+      const sum = document.createElement("summary");
+      sum.textContent = "子分类 · " + subs.length;
+      det.appendChild(sum);
+      for (const sub of subs) {
+        const subBooks = categoryBooks.filter(b => b.subcategory === sub);
+        const subKeys = [...new Set(subBooks.map(b => sk(b.collection, b.group, b.category, b.subcategory || "")))];
+        det.appendChild(makeOpt(sub, subKeys.length > 0 && subKeys.every(key => sel.subcategories.has(key)), (on) => {
+          leaveEighteen();
+          for (const key of subKeys) on ? sel.subcategories.add(key) : sel.subcategories.delete(key);
+          applyFilters();
+        }, subBooks.length));
+      }
+      catList.appendChild(det);
+    }
+  }
+  cWrap.appendChild(catList);
+  box.appendChild(cWrap);
+}
+
+function makeChip(label, count, on, onChange, group, kind) {
+  const el = document.createElement("button");
+  el.className = "chip" + (on ? " on" : "");
+  if (group) el.dataset.group = group;
+  if (kind) el.dataset.kind = kind;
+  el.setAttribute("aria-pressed", on ? "true" : "false");
+  el.innerHTML = `<span class="lab">${esc(label)}</span><span class="n">${count}</span>`;
+  el.addEventListener("click", () => onChange(!on));
+  return el;
+}
+
+function makeOpt(label, checked, onChange, count) {
+  const lab = document.createElement("label");
+  lab.className = "opt";
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.checked = checked;
+  cb.addEventListener("change", () => onChange(cb.checked));
+  const box = document.createElement("span"); box.className = "box";
+  const txt = document.createElement("span"); txt.className = "lab"; txt.textContent = label;
+  lab.appendChild(cb); lab.appendChild(box); lab.appendChild(txt);
+  if (typeof count === "number") {
+    const n = document.createElement("span"); n.className = "n"; n.textContent = count;
+    lab.appendChild(n);
+  }
+  return lab;
+}
+
+function countOf(fn) { return allBooks.reduce((a, b) => a + (fn(b) ? 1 : 0), 0); }
+
+function applyFilters() {
+  const kws = sel.keyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matchKw = (b) => {
+    if (!kws.length) return true;
+    const hay = ((b.title || "") + " " + (b.author || "")).toLowerCase();
+    return kws.every(k => hay.includes(k));
+  };
+  const out = eighteenOn
+    ? eighteenBooks(allBooks).filter(matchKw)
+    : (BookFilterState.isReady(sel) ? allBooks.filter(b => matchKw(b) && BookFilterState.matches(sel, b)) : []);
+
+  const emptyText = $("#emptyText");
+  const emptyReset = $("#emptyReset");
+  const selectedEmptyColl = [...sel.collections].some(c => countOf(b => b.collection === c) === 0);
+  const emptyCollectionState = out.length === 0 && selectedEmptyColl
+    && !sel.categories.size && !sel.subcategories.size && !eighteenOn;
+  emptyReset.hidden = !emptyCollectionState;
+  if (eighteenOn && out.length === 0) {
+    emptyText.textContent = "十八推荐的书暂时还没在书库里";
+  } else if (emptyCollectionState) {
+    emptyText.textContent = "该书库暂时还没有入库书籍";
+  } else if (!eighteenOn && sel.collections.size && !sel.groups.size) {
+    emptyText.textContent = "请再选择左手书籍或右手书籍";
+  } else {
+    emptyText.textContent = "没有找到匹配的书籍";
+  }
+
+  shownBooks = out;
+  if (window.V5Immersive && window.V5Immersive.ready) window.V5Immersive.setBooks(out);
+  renderShelves(out);
+  updateSelUI();
+  $("#count").textContent = `${out.length} / ${allBooks.length}`;
+}
+
+/* ---------- 书架渲染 ---------- */
+// 当前主区一行能放几本书。量一次容器宽，按书宽+间隙算。
+function booksPerRow() {
+  const w = grid.clientWidth || 1000;
+  const slot = BOOK_W + BOOK_GAP;
+  return Math.max(3, Math.floor((w - ROW_SIDE_PAD) / slot));
+}
+
+// 把书按「书库 → 阅读方向 → 具体分类」分格，保持出现顺序；同一格的书排在同一面柜子里。
+function groupByCategory(list) {
+  if (eighteenOn) {
+    return [{ collection: "懿十八的推荐橱窗", group: "", category: "十八推荐", books: list }];
+  }
+  const map = new Map();
+  for (const b of list) {
+    const key = [b.collection, b.group, b.category].join("||");
+    if (!map.has(key)) {
+      map.set(key, { collection: b.collection, group: b.group, category: b.category, books: [] });
+    }
+    map.get(key).books.push(b);
+  }
+  return [...map.values()];
+}
+
+// 由 id 算一个确定性的伪随机数（0..1），给书高度/微倾一点变化，但不许用 Math.random（要可复现）。
+function hash01(n) {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function renderShelves(list) {
+  bookByPath.clear();
+  hidePreview();   // 书架重排后，悬停的猎物已经没了
+  if (!list.length) { grid.innerHTML = ""; emptyEl.style.display = "block"; return; }
+  emptyEl.style.display = "none";
+
+  const perRow = booksPerRow();
+  lastPerRow = perRow;          // 记下当前每行本数，resize 时据此判断要不要重切层板
+  let idx = 0;
+
+  // 整面书架拼成一个大字符串，一次性写进 grid——比逐本 createElement + 挂监听器快一个数量级，
+  // 点左侧筛选时不再卡住鼠标（2400 本逐本建 DOM 实测 >1s，一次性 innerHTML 仅几十 ms）。
+  let html = "";
+  for (const g of groupByCategory(list)) {
+    const crumb = [g.collection, g.group].filter(Boolean).join(" · ");
+    html += `<section class="shelf">` +
+      `<div class="plate"><span class="p-crumb">${esc(crumb)}</span>` +
+      `<span class="p-name">${esc(g.category || "未分类")}</span>` +
+      `<span class="p-count">${g.books.length} 本</span></div>` +
+      `<div class="case">`;
+    for (let start = 0; start < g.books.length; start += perRow) {
+      const rowBooks = g.books.slice(start, start + perRow);
+      html += `<div class="board"><div class="row">`;
+      for (const b of rowBooks) {
+        idx += 1;
+        html += buildBookHTML(b, "A" + idx);
+      }
+      html += `</div><div class="plank"></div></div>`;
+    }
+    html += `</div></section>`;
+  }
+  grid.innerHTML = html;
+  cacheBookRects();     // 量一次每本书的文档坐标
+  armVisible();         // 立即标记视口附近的书为 3D，其余保持平躺
+}
+
+/* ---------- 3D 视口武装 ----------
+   2400 本全建 3D 图层会卡死。只有视口附近（上下各留 600px 余量）的书打 .inview 标——
+   打了标的才 preserve-3d、画书脊/书口/封底；离屏书只是平躺的一张平封面。
+   不用 IntersectionObserver：本项目实测某些不合成帧的环境里 IO 不回调。
+   改用「缓存文档坐标」：渲染/缩放时量一次，滚动时只拿 scrollY 跟缓存比，
+   不再逐本 getBoundingClientRect() 强制全页重排——那才是滑动卡顿的元凶。 */
+const ARM_MARGIN = 600;
+let bookRects = [];          // 与 bookEls 同序，存文档坐标 {top, bottom}
+let bookEls = [];
+
+function cacheBookRects() {
+  bookEls = [...grid.querySelectorAll(".bk")];
+  const base = window.scrollY;
+  bookRects = bookEls.map(el => {
+    const r = el.getBoundingClientRect();
+    return { top: r.top + base, bottom: r.bottom + base };
+  });
+}
+
+function armVisible() {
+  const viewTop = window.scrollY - ARM_MARGIN;
+  const viewBottom = window.scrollY + window.innerHeight + ARM_MARGIN;
+  for (let i = 0; i < bookEls.length; i++) {
+    const r = bookRects[i];
+    bookEls[i].classList.toggle("inview", r.bottom > viewTop && r.top < viewBottom);
+  }
+}
+let armTimer = null;
+function scheduleArm() {                     // 节流：80ms 最多重算一遍
+  if (armTimer) return;
+  armTimer = setTimeout(() => { armTimer = null; armVisible(); }, 80);
+}
+window.addEventListener("scroll", scheduleArm, { passive: true });
+// 页面在后台标签加载时布局被推迟，load 那刻量到的坐标是废的；
+// 切回前台（visibilitychange）时重量重标一遍，避免书一直平躺不成 3D。
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { cacheBookRects(); armVisible(); }
+});
+let armResizeTimer = null;
+window.addEventListener("resize", () => {    // 尺寸变了坐标全废，重量一遍；拖动缩放太频繁，也节流
+  if (armResizeTimer) return;
+  armResizeTimer = setTimeout(() => {
+    armResizeTimer = null;
+    cacheBookRects();
+    armVisible();
+  }, 80);
+}, { passive: true });
+
+function buildBookHTML(b, idx) {
+  const on = picked.has(b.path);
+  bookByPath.set(b.path, b);
+  // 高度与微倾的确定性变化：像真书架上高矮不齐、偶有斜靠的书
+  const h = hash01(b.id || idx.length);
+  const heightScale = 0.9 + h * 0.14;                 // 90%–104%
+  const lean = (hash01((b.id || 1) * 7.3) - 0.5) * 3;  // -1.5°–1.5°
+  const cls = "bk " + (b.cover ? "has-cover" : "no-cover") + (on ? " picked" : "");
+  const style = `height:calc(var(--book-w) * 1.5 * ${heightScale.toFixed(3)});--lean:${lean.toFixed(2)}deg`;
+  // 首屏先把可见书架填满，避免浏览器把全部图片都当作离屏资源而只显示书壳；
+  // 后面的书仍然延迟加载，不能让 2500 本封面同时抢网络和内存。
+  const coverIndex = Number(String(idx).replace(/\D/g, ""));
+  const priorityCover = coverIndex > 0 && coverIndex <= 32;
+  const coverHtml = b.cover
+    ? `<img loading="${priorityCover ? "eager" : "lazy"}" fetchpriority="${priorityCover ? "high" : "auto"}" decoding="async" src="${ASSET_PREFIX}${encodeURI(b.cover)}" alt="">`
+    : "";
+  const firstChar = (b.title || "书").trim().charAt(0) || "书";
+  // 真 3D 书：封底 + 左书脊 + 右书口 + 正面封面。离屏时侧面不显示（CSS 控制），只是一张平封面。
+  return `<div class="${cls}" data-path="${esc(b.path)}" data-idx="${esc(idx)}" role="button" aria-label="${esc(`查看《${b.title || "未命名"}》详情`)}" tabindex="0" style="${style}">` +
+    `<span class="base"></span><div class="vol">` +
+    `<div class="f f-back"></div><div class="f f-spine"></div><div class="f f-pages"></div>` +
+    `<div class="f f-front">${coverHtml}<span class="stamp">${esc(firstChar)}</span></div></div>` +
+    `<label class="pick" title="选择这本书"><input type="checkbox" aria-label="${esc(`选择《${b.title || "未命名"}》`)}"${on ? " checked" : ""}><span class="box"></span></label></div>`;
+}
+
+/* 事件委托：2400 本书的交互全挂在一个 #grid 上，不再逐本挂监听器。
+   注意 img 的 load/error 不冒泡，必须用捕获阶段（第三参 true）才接得到。 */
+grid.addEventListener("click", (e) => {
+  if (e.target.closest(".pick")) return;                 // 点在勾选框上，不开详情
+  const bk = e.target.closest(".bk");
+  if (!bk) return;
+  const b = bookByPath.get(bk.dataset.path);
+  if (b) openModal(b, bk.dataset.idx);
+});
+grid.addEventListener("keydown", (e) => {
+  const bk = e.target.closest(".bk");
+  if (!bk || e.target !== bk || !(e.key === "Enter" || e.key === " ")) return;
+  e.preventDefault();
+  const b = bookByPath.get(bk.dataset.path);
+  if (b) openModal(b, bk.dataset.idx);
+});
+grid.addEventListener("change", (e) => {
+  const input = e.target.closest(".pick input");
+  if (!input) return;
+  const bk = input.closest(".bk");
+  const b = bk && bookByPath.get(bk.dataset.path);
+  if (!b) return;
+  input.checked ? picked.add(b.path) : picked.delete(b.path);
+  bk.classList.toggle("picked", input.checked);
+  updateSelUI();
+});
+grid.addEventListener("load", (e) => {                    // 封面加载成功 → 取左缘色染书脊
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const bk = img.closest(".bk");
+  if (bk && img.naturalWidth) { bk.classList.add("cover-ready"); tintBookFromCover(bk, img); }
+}, true);
+grid.addEventListener("error", (e) => {                   // 封面加载失败 → 退成渐变文字卡
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  const bk = img.closest(".bk");
+  img.remove();
+  if (bk) { bk.classList.remove("has-cover"); bk.classList.add("no-cover"); }
+}, true);
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/* 取封面左缘平均色，给书脊条染色——书脊和封面是连续的一块布。同源图片，canvas 放心读像素。 */
+function coverSpineColor(img) {
+  try {
+    const w = 8, h = 8;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    const sw = Math.max(1, Math.floor(img.naturalWidth * 0.18));
+    cx.drawImage(img, 0, 0, sw, img.naturalHeight, 0, 0, w, h);
+    const d = cx.getImageData(0, 0, w, h).data;
+    let r = 0, g = 0, b = 0;
+    const n = w * h;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  } catch { return null; }
+}
+
+function tintBookFromCover(el, img) {
+  const c = coverSpineColor(img);
+  if (!c) return;
+  el.style.setProperty("--cov", `rgb(${c[0]},${c[1]},${c[2]})`);
+}
+
+/* ---------- 来源 / 评分 ----------
+   来源：从文件名里的下载标记推导，Z-Library 及其镜像统一显示成 Z-Library，没留标记的按「网络收集」。
+   评分：仅拓展好评书籍有，就是当初挑这批书时看的平台分（豆瓣）。
+   这两个标签在悬停导读卡就显示（点开详情也有）；其余分类标签仍只在详情弹窗显示。 */
+const RATINGS = {   // 拓展好评书籍 → { s: 评分, p: 平台 }
+  "万历十五年": { s: 9.0, p: "豆瓣" },
+  "云图": { s: 8.4, p: "豆瓣" },
+  "亮剑": { s: 9.0, p: "豆瓣" },
+  "偷影子的人": { s: 7.7, p: "豆瓣" },
+  "南渡北归（全三册）": { s: 8.3, p: "豆瓣" },
+  "命运": { s: 8.8, p: "豆瓣" },
+  "哈利·波特与魔法石": { s: 9.1, p: "豆瓣" },
+  "太白金星有点烦": { s: 9.0, p: "豆瓣" },
+  "岛上书店": { s: 7.8, p: "豆瓣" },
+  "无声告白": { s: 8.2, p: "豆瓣" },
+  "沈从文全传（增订版全二册）": { s: 8.8, p: "豆瓣" },
+  "狼图腾": { s: 8.2, p: "豆瓣" },
+  "繁花": { s: 8.6, p: "豆瓣" },
+  "苏菲的世界": { s: 8.8, p: "豆瓣" },
+  "高堡奇人": { s: 7.5, p: "豆瓣" },
+};
+
+function sourceOf(b) {
+  if (b.source) return b.source;
+  const hay = (b.path || "") + " " + (b.title || "");
+  if (/z-?library|1lib|z-lib|zlib/i.test(hay)) return "Z-Library";
+  return "网络收集";
+}
+function ratingOf(b) {
+  // 评分只给拓展好评书籍：有垂类书与之同名（如《万历十五年》两库都有），不能按标题误伤垂类书
+  if (!b.collection || !b.collection.includes("好评")) return null;
+  if (b.rating != null) return { s: b.rating, p: b.ratingPlatform || "豆瓣" };
+  return RATINGS[(b.title || "").trim()] || null;
+}
+// 拼「来源 / 评分」两个标签的 HTML（悬停导读卡与详情弹窗共用）
+function srcRateTagsHtml(b) {
+  let html = `<span class="tag src">${esc(sourceOf(b))}</span>`;
+  const r = ratingOf(b);
+  if (r) html += `<span class="tag rate">评分：${r.s.toFixed(1)}<span class="plat">（${esc(r.p)}）</span></span>`;
+  return html;
+}
+
+/* ---------- 悬停导读卡：抽书看封底 ----------
+   用事件委托挂在 #grid 上（不为 2407 本书各挂一个监听器）。
+   悬停 ~220ms 后才浮出，沿着一排书扫过时不会本本都闪；
+   已经浮着的时候换书直接换内容，浏览是连续的。 */
+const previewCard = $("#previewCard");
+const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+let previewTimer = null;
+let previewPath = null;
+
+function fillPreview(b) {
+  const cov = $("#pcCov"), img = $("#pcImg"), stamp = $("#pcStamp");
+  if (b.cover) {
+    cov.classList.remove("no-cover");
+    const src = ASSET_PREFIX + encodeURI(b.cover);
+    img.onerror = () => { cov.classList.add("no-cover"); stamp.textContent = (b.title || "书").trim().charAt(0) || "书"; };
+    if (img.getAttribute("src") !== src) img.src = src;
+  } else {
+    cov.classList.add("no-cover");
+    img.removeAttribute("src");
+    stamp.textContent = (b.title || "书").trim().charAt(0) || "书";
+  }
+  $("#pcTitle").textContent = b.title || "未命名";
+  $("#pcAuthor").textContent = b.author || "佚名";
+  const sum = $("#pcSummary");
+  if (b.summary) { sum.textContent = b.summary; sum.classList.remove("empty"); }
+  else { sum.textContent = "这本书还没有生成梗概。"; sum.classList.add("empty"); }
+  $("#pcMeta").textContent = `${String(b.format || "PDF").toUpperCase()} · ${fmtSize(b.size || 0)}`;
+  $("#pcTags").innerHTML = srcRateTagsHtml(b);   // 来源（好评书另有评分）
+}
+
+// 把导读卡放到书旁：优先右侧，放不下换左侧；垂直方向对齐书的中线并夹进视口。
+function positionPreview(bk) {
+  const r = bk.getBoundingClientRect();
+  const gap = 16, margin = 12;
+  const cw = previewCard.offsetWidth, ch = previewCard.offsetHeight;
+  let left = r.right + gap, side = "right";
+  if (left + cw > window.innerWidth - margin) { left = r.left - gap - cw; side = "left"; }
+  if (left < margin) { left = margin; }
+  let top = r.top + r.height / 2 - ch / 2;
+  top = Math.max(margin, Math.min(top, window.innerHeight - ch - margin));
+  previewCard.style.left = left + "px";
+  previewCard.style.top = top + "px";
+  previewCard.dataset.side = side;
+  // 箭头对准书的中线，而不是卡的中线
+  previewCard.style.setProperty("--arrow-y", (r.top + r.height / 2 - top) + "px");
+}
+
+function showPreviewFor(bk, path) {
+  const b = bookByPath.get(path);
+  if (!b) return;
+  fillPreview(b);
+  previewCard.classList.remove("show");   // 先隐形量尺寸
+  positionPreview(bk);
+  previewCard.classList.add("show");
+}
+
+function schedulePreview(bk, path) {
+  clearTimeout(previewTimer);
+  if (previewCard.classList.contains("show")) showPreviewFor(bk, path);  // 已浮着就即刻换
+  else previewTimer = setTimeout(() => showPreviewFor(bk, path), 220);
+}
+
+function hidePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  previewPath = null;
+  previewCard.classList.remove("show");
+}
+
+if (canHover) {
+  grid.addEventListener("mouseover", (e) => {
+    const bk = e.target.closest(".bk");
+    if (!bk || bk.dataset.path === previewPath) return;
+    previewPath = bk.dataset.path;
+    schedulePreview(bk, previewPath);
+  });
+  grid.addEventListener("mouseout", (e) => {
+    const bk = e.target.closest(".bk");
+    if (!bk || bk.contains(e.relatedTarget)) return;   // 在书内部子元素间移动不算离开
+    if (previewPath === bk.dataset.path) hidePreview();
+  });
+  window.addEventListener("scroll", hidePreview, { passive: true });  // 一滚动书就挪位，卡跟着失准
+}
+
+/* ---------- 开灯揭幕开场 ----------
+   全屏先暗 → 同一盏 #lamp 被提到暗场中央点亮 → 暖光绽放照亮书房 → 标题浮出 →
+   落幕时灯不消失，而是滑到 hero 大标题正上方、卡进锚点固定下来。
+   每次会话只播一次（sessionStorage），prefers-reduced-motion 直接跳过；
+   点击 / 按键 / 滚动任一动作立即进入。光的颜色与常驻 #roomLight 同色。 */
+(function introSequence() {
+  const intro = $("#intro");
+  const lamp = $("#lamp");
+  const roomLamp = $("#roomLamp");
+  if (!intro) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const seen = sessionStorage.getItem("v5_intro");
+  // 不播开场：灯本就落在锚点里，直接开始轻晃，撤掉暗场即可
+  if (reduce || seen) {
+    if (roomLamp) roomLamp.classList.add("on");
+    intro.remove();
+    return;
+  }
+  sessionStorage.setItem("v5_intro", "1");
+
+  // 把灯从锚点里提出来，悬到暗场中央（尚未点亮）；并锁住滚动，保证落幕那刻量到的锚点坐标有效。
+  // 锁加在根元素上、配合 html 的 scrollbar-gutter:stable——滚动条槽位始终预留，视口宽度不变、锚点不横移。
+  if (lamp && roomLamp) {
+    document.documentElement.style.overflow = "hidden";
+    document.body.appendChild(lamp);
+    lamp.classList.add("flying");
+  }
+
+  // 落幕：暗场淡出，灯滑向标题上方并固定
+  const dockLamp = () => {
+    if (!lamp || !roomLamp || !lamp.classList.contains("flying")) return;
+    const aR = roomLamp.getBoundingClientRect();   // 锚点的视口坐标（此时页面锁在顶部）
+    lamp.style.left = (aR.left + aR.width / 2) + "px";
+    lamp.style.top = (aR.top + aR.height / 2) + "px";
+    lamp.style.width = aR.width + "px";
+    // 滑到位（与 .flying 的 1s 过渡同步）后落回锚点：摘掉悬飞/点亮态、清掉行内位移，回到常亮的落位态
+    setTimeout(() => {
+      roomLamp.appendChild(lamp);
+      lamp.classList.remove("flying", "lit");
+      lamp.style.left = lamp.style.top = lamp.style.width = lamp.style.transform = "";
+      roomLamp.classList.add("on");             // 固定后才开始轻晃
+      document.documentElement.style.overflow = "";   // 解锁滚动（scrollbar-gutter 保证不横移）
+    }, 1000);
+  };
+
+  let done = false;
+  const finish = () => {
+    if (done) return; done = true;
+    intro.classList.add("out");                 // 暗场整体淡出
+    setTimeout(() => intro.remove(), 750);
+    dockLamp();                                 // 灯滑去标题上方固定
+  };
+  // 开场最短 2.4 秒；两类书库的首屏封面尚未预热完成时继续停留。
+  let finishRequested = false;
+  const finishAfterCovers = () => {
+    if (done || finishRequested) return;
+    finishRequested = true;
+    const hint = $("#introSkip");
+    if (!coverFirstPaintDone && hint) hint.textContent = "正在准备首屏封面…";
+    coverFirstPaintReady.then(finish);
+  };
+  // 点 / 键 / 滚任一动作也不会绕过封面预热。
+  ["pointerdown", "keydown", "wheel"].forEach(ev =>
+    window.addEventListener(ev, finishAfterCovers, { once: true, passive: true }));
+
+  // 灯先点亮，稍作停留后暖光绽放；落幕即 finish
+  setTimeout(() => {
+    intro.classList.add("lit");                 // 光团绽放 + 标题浮出
+    if (lamp) lamp.classList.add("lit");        // 点亮这盏灯
+  }, 420);
+  setTimeout(finishAfterCovers, 2400);           // 至少 2.4s；未预热完则继续等待
+})();
+
+/* ---------- 抓手光标 ----------
+   一只跟着鼠标的手，贯穿全站（整站 cursor:none 藏掉系统光标）。平时是张开的；
+   只有在按下鼠标的那一刻才握紧成拳——像把手里的东西攥住，松开又摊开。
+   滑出窗口就隐去。 */
+const grabHand = $("#grabHand");
+if (canHover && grabHand) {
+  let handDown = false;   // 鼠标是否正按着：按着就握紧，松开即摊开
+  document.addEventListener("mousemove", (e) => {
+    grabHand.classList.add("show");
+    grabHand.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+    grabHand.classList.toggle("grab", handDown);   // 拖动途中保持握拳
+  }, { passive: true });
+  // 鼠标滑出窗口就隐去（relatedTarget 为空表示离开了文档）
+  document.addEventListener("mouseout", (e) => { if (!e.relatedTarget) grabHand.classList.remove("show"); });
+  // 按下＝握紧，松开＝摊开。无论按在哪，都是这一下抓握。
+  document.addEventListener("mousedown", () => { handDown = true; grabHand.classList.add("grab"); });
+  document.addEventListener("mouseup", () => { handDown = false; grabHand.classList.remove("grab"); });
+}
+
+/* ---------- 磁吸按钮 ----------
+   参考 chungsunglau.co.uk：按钮会被鼠标轻轻吸过去一点，离开又弹回。
+   用独立的 CSS translate 属性实现（与元素自身的 transform 叠加，互不干扰）。 */
+const MAGNETIC = ".btn, .chip, .brand, #toTop, .m-close, .m-download, .m-buy-btn, #clearFilters, #eighteenBtn";
+const magnetBound = new WeakSet();
+function bindMagnetic(scope) {
+  if (!canHover) return;
+  (scope || document).querySelectorAll(MAGNETIC).forEach(el => {
+    if (magnetBound.has(el)) return;
+    magnetBound.add(el);
+    el.classList.add("magnetic");
+    el.addEventListener("mousemove", (e) => {
+      const r = el.getBoundingClientRect();
+      const pull = 0.32, cap = 7;
+      const mx = Math.max(-cap, Math.min(cap, (e.clientX - (r.left + r.width / 2)) * pull));
+      const my = Math.max(-cap, Math.min(cap, (e.clientY - (r.top + r.height / 2)) * pull));
+      el.style.translate = `${mx.toFixed(1)}px ${my.toFixed(1)}px`;
+    });
+    el.addEventListener("mouseleave", () => { el.style.translate = "0px 0px"; });
+  });
+}
+bindMagnetic(document);
+
+/* ---------- 批量选择与下载 ---------- */
+function fmtSize(bytes) {
+  const mb = bytes / 1048576;
+  return mb >= 1024 ? (mb / 1024).toFixed(2) + " GB" : mb.toFixed(1) + " MB";
+}
+
+function updateSelUI() {
+  const n = picked.size;
+  $("#selCount").textContent = n;
+  const namesOnly = staticMode && !siteConfig.downloadBase;
+  $("#selMeta").hidden = namesOnly;
+  $("#selSize").textContent = fmtSize(
+    allBooks.reduce((a, b) => a + (picked.has(b.path) ? (b.size || 0) : 0), 0));
+  $("#selBar").classList.toggle("show", n > 0);
+}
+
+function syncCardMarks() {
+  grid.querySelectorAll(".bk").forEach(bk => {
+    const on = picked.has(bk.dataset.path);
+    bk.classList.toggle("picked", on);
+    bk.querySelector(".pick input").checked = on;
+  });
+  updateSelUI();
+}
+
+function bookURL(path) {
+  if (!staticMode) return "/api/download?path=" + encodeURIComponent(path);
+  const segs = String(path).split(/[\\/]/).filter(Boolean).map(encodeURIComponent);
+  return (siteConfig.downloadBase || "").replace(/\/+$/, "") + "/" + segs.join("/");
+}
+
+function syncDownloadAvailability() {
+  const disabled = staticMode && !siteConfig.downloadBase;
+  document.body.classList.toggle("downloads-disabled", disabled);
+  const exportBtn = $("#selExport");
+  exportBtn.textContent = disabled ? "导出书名清单" : "导出清单";
+  exportBtn.title = disabled ? "导出已选书籍的书名（TXT）" : "导出直链清单，喂给 IDM / aria2 / 迅雷";
+}
+
+function downloadReady() {
+  return !(staticMode && !siteConfig.downloadBase);
+}
+
+function saveAs(href, name) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function triggerDownload(path) {
+  saveAs(bookURL(path), "");
+}
+
+const today = () => new Date().toLocaleDateString("sv");
+
+$("#pickAll").addEventListener("click", () => {
+  for (const b of shownBooks) picked.add(b.path);
+  syncCardMarks();
+});
+$("#selInvert").addEventListener("click", () => {
+  for (const b of shownBooks) picked.has(b.path) ? picked.delete(b.path) : picked.add(b.path);
+  syncCardMarks();
+});
+$("#selClear").addEventListener("click", () => { picked.clear(); syncCardMarks(); });
+
+const BATCH_GAP_MS = 400;
+const BATCH_CONFIRM_AT = 10;
+let batchAbort = false;
+
+async function downloadOneByOne(paths, btn) {
+  if (paths.length > BATCH_CONFIRM_AT && !confirm(
+      `要依次下载 ${paths.length} 本书。\n浏览器可能会问你「是否允许下载多个文件」，点允许即可。\n` +
+      `本数多的话更推荐「导出清单」，拿去喂 IDM / aria2 / 迅雷。\n\n继续？`))
+    return "下载选中 ↓";
+  batchAbort = false;
+  $("#selCancel").hidden = false;
+  try {
+    for (let i = 0; i < paths.length; i++) {
+      if (batchAbort) return `已取消 ${i} / ${paths.length}`;
+      btn.textContent = `下载中 ${i + 1} / ${paths.length}`;
+      triggerDownload(paths[i]);
+      await new Promise(r => setTimeout(r, BATCH_GAP_MS));
+    }
+  } finally {
+    $("#selCancel").hidden = true;
+  }
+  return "已开始下载 ✓";
+}
+
+$("#selCancel").addEventListener("click", () => { batchAbort = true; });
+
+$("#selDownload").addEventListener("click", async () => {
+  const paths = [...picked];
+  if (!paths.length || !downloadReady()) return;
+  const btn = $("#selDownload");
+  btn.disabled = true;
+  try {
+    if (paths.length === 1) {
+      triggerDownload(paths[0]);
+      btn.textContent = "已开始下载 ✓";
+    } else if (staticMode) {
+      btn.textContent = await downloadOneByOne(paths, btn);
+    } else {
+      btn.textContent = "打包中…";
+      const r = await fetch("/api/download-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
+      if (!r.ok) throw new Error(r.status);
+      const url = URL.createObjectURL(await r.blob());
+      saveAs(url, "书籍_" + today() + ".zip");
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      btn.textContent = "已开始下载 ✓";
+    }
+  } catch {
+    btn.textContent = "打包失败，再点一次";
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = "下载选中 ↓"; }, 2000);
+});
+
+$("#selExport").addEventListener("click", () => {
+  if (!picked.size) return;
+  const selectedBooks = allBooks.filter(b => picked.has(b.path));
+  const namesOnly = staticMode && !siteConfig.downloadBase;
+  const lines = namesOnly
+    ? selectedBooks.map(b => b.title || "未命名")
+    : selectedBooks.map(b => bookURL(b.path));
+  const url = URL.createObjectURL(
+    new Blob([lines.join("\r\n") + "\r\n"], { type: "text/plain;charset=utf-8" }));
+  saveAs(url, namesOnly ? "书名清单_" + today() + ".txt" : "下载清单_" + today() + ".txt");
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  const btn = $("#selExport");
+  btn.textContent = `已导出 ${lines.length} 条 ✓`;
+  setTimeout(() => { btn.textContent = namesOnly ? "导出书名清单" : "导出清单"; }, 2000);
+});
+
+/* ---------- 详情弹窗 ---------- */
+const modalMask = $("#modalMask");
+let modalBook = null;
+let modalReturnFocus = null;
+
+function openModal(b, idx) {
+  modalReturnFocus = document.activeElement;
+  modalBook = b;
+  hidePreview();   // 进入详情，悬停导读卡退场
+  $("#mIdx").textContent = idx || "";
+  $("#mTitle").textContent = b.title || "未命名";
+  $("#mAuthor").textContent = b.author || "佚名";
+
+  const sumEl = $("#mSummary");
+  if (b.summary) {
+    sumEl.textContent = b.summary;
+    sumEl.classList.remove("empty");
+  } else {
+    sumEl.textContent = "这本书还没有生成梗概。";
+    sumEl.classList.add("empty");
+  }
+
+  const showBuy = eighteenOn && isEighteenBook(b);
+  const crumbEls = [b.collection, b.group, b.category, b.subcategory].filter(Boolean);
+  const recTag = showBuy ? `<span class="tag">十八推荐</span>` : "";
+  $("#mCrumbs").innerHTML =
+    crumbEls.map(c => `<span class="tag">${esc(c)}</span>`).join("") +
+    recTag +
+    `<span class="tag fmt">${esc(b.format)}</span>` +
+    srcRateTagsHtml(b);   // 来源（好评书另有评分）
+
+  $("#mPath").textContent = `${String(b.format || "PDF").toUpperCase()} · ${fmtSize(b.size || 0)}`;
+  $("#mBuy").hidden = !showBuy;
+
+  const mBook = $("#mBook");
+  mBook.style.removeProperty("--cov");
+  const mCover = $("#mCover");
+  mCover.style.display = b.cover ? "" : "none";
+  $("#mAmbient").style.backgroundImage = b.cover ? `url("${ASSET_PREFIX}${encodeURI(b.cover)}")` : "none";
+  if (b.cover) {
+    const src = ASSET_PREFIX + encodeURI(b.cover);
+    mCover.onerror = () => { mCover.style.display = "none"; };
+    if (mCover.getAttribute("src") !== src) mCover.src = src;
+    if (mCover.complete && mCover.naturalWidth) tintBookFromCover(mBook, mCover);
+    else mCover.addEventListener("load", () => tintBookFromCover(mBook, mCover), { once: true });
+  }
+  const modalEl = modalMask.querySelector(".modal");
+  modalEl.classList.remove("enter");
+  void modalEl.offsetWidth;
+  modalEl.classList.add("enter");
+
+  modalMask.classList.add("show");
+  document.body.style.overflow = "hidden";
+  $("#modalClose").focus();
+}
+
+function closeBuyShot() {
+  const shot = $("#buyShot");
+  shot.classList.remove("show");
+  shot.setAttribute("aria-hidden", "true");
+}
+function openBuyShot() {
+  const shot = $("#buyShot");
+  const img = $("#buyShotImg");
+  if (img.getAttribute("src") !== EIGHTEEN_BUY_IMG) img.src = EIGHTEEN_BUY_IMG;
+  shot.classList.add("show");
+  shot.setAttribute("aria-hidden", "false");
+}
+
+function closeModal() {
+  closeBuyShot();
+  modalMask.classList.remove("show");
+  document.body.style.overflow = "";
+  modalBook = null;
+  if (modalReturnFocus && typeof modalReturnFocus.focus === "function") modalReturnFocus.focus();
+  modalReturnFocus = null;
+}
+
+$("#modalClose").addEventListener("click", closeModal);
+modalMask.addEventListener("click", (e) => { if (e.target === modalMask) closeModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#buyShot").classList.contains("show")) { closeBuyShot(); return; }
+  if (modalMask.classList.contains("show")) closeModal();
+});
+
+$("#mDownload").addEventListener("click", () => {
+  if (!modalBook || !downloadReady()) return;
+  const btn = $("#mDownload");
+  triggerDownload(modalBook.path);
+  btn.textContent = "已开始下载 ✓";
+  setTimeout(() => { btn.textContent = "下载书籍 ↓"; }, 1500);
+});
+$("#mBuy").addEventListener("click", () => { openBuyShot(); });
+$("#buyShotClose").addEventListener("click", closeBuyShot);
+$("#buyShot").addEventListener("click", (e) => { if (e.target === $("#buyShot")) closeBuyShot(); });
+
+let debounceTimer = null;
+$("#search").addEventListener("input", (e) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { sel.keyword = e.target.value; applyFilters(); }, 150);
+});
+$("#clearFilters").addEventListener("click", () => {
+  leaveEighteen();
+  sel.collections.clear(); sel.groups.clear(); sel.categories.clear();
+  sel.subcategories.clear(); sel.formats.clear();
+  $("#search").value = ""; sel.keyword = "";
+  renderFilters(); applyFilters();
+});
+$("#emptyReset").addEventListener("click", () => {
+  leaveEighteen();
+  BookFilterState.selectAll(sel);
+  $("#search").value = ""; sel.keyword = "";
+  renderFilters(); applyFilters();
+});
+$("#eighteenBtn").addEventListener("click", () => {
+  eighteenOn = !eighteenOn;
+  syncEighteenBtn();
+  applyFilters();
+});
+
+const toTop = $("#toTop");
+window.addEventListener("scroll", () => {
+  toTop.classList.toggle("show", window.scrollY > 600);
+}, { passive: true });
+toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+
+// 视口宽度变化会改变每行本数，需要重新切分层板。节流，并且只有列数真的变了才重排。
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  if (resizeTimer) return;
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null;
+    const n = booksPerRow();
+    if (shownBooks.length && n !== lastPerRow) {
+      lastPerRow = n;
+      renderShelves(shownBooks);
+      syncCardMarks();
+    }
+  }, 160);
+}, { passive: true });
+
+loadAll();
+</script>
+<script>
+(() => {
+  const world = document.querySelector('#v5World .v5-room');
+  const canvas = document.getElementById('v5Dust');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let mx=0,my=0,tx=0,ty=0,raf=0,ctx,pts=[];
+  function size(){
+    if(!canvas) return;
+    const d=Math.min(devicePixelRatio||1,1.5), w=innerWidth, h=innerHeight;
+    canvas.width=w*d; canvas.height=h*d; canvas.style.width=w+'px'; canvas.style.height=h+'px';
+    ctx=canvas.getContext('2d'); ctx.setTransform(d,0,0,d,0,0);
+    const n=Math.min(95,Math.max(36,Math.round(w*h/19000)));
+    pts=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,z:.25+Math.random()*.9,r:.35+Math.random()*1.15,v:.08+Math.random()*.28,a:.12+Math.random()*.42}));
+  }
+  function draw(){
+    if(!ctx) return;
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    for(const p of pts){ p.y-=p.v*p.z; p.x+=Math.sin((p.y+p.z*400)*.006)*.06; if(p.y<-8){p.y=innerHeight+8;p.x=Math.random()*innerWidth}
+      ctx.beginPath(); ctx.fillStyle='rgba(236,207,148,'+p.a+')'; ctx.arc(p.x,p.y,p.r*p.z,0,Math.PI*2); ctx.fill(); }
+    raf=requestAnimationFrame(draw);
+  }
+  function tilt(e){ if(reduced||!world) return; tx=(e.clientX/innerWidth-.5)*8; ty=(e.clientY/innerHeight-.5)*5; world.style.transform='rotateX('+(-ty)+'deg) rotateY('+tx+'deg) translate3d('+(-tx*1.5)+'px,'+(-ty*1.2)+'px,0)'; }
+  document.addEventListener('pointermove',tilt,{passive:true});
+  document.addEventListener('pointerleave',()=>{ if(world) world.style.transform=''; },{passive:true});
+  document.addEventListener('pointermove',(e)=>{ const el=e.target.closest && e.target.closest('.bk'); if(!el||reduced) return; const r=el.getBoundingClientRect(), x=(e.clientX-r.left)/r.width-.5, y=(e.clientY-r.top)/r.height-.5; el.style.transform='rotateY('+(x*9)+'deg) rotateX('+(-y*7)+'deg) translateZ(8px)'; },{passive:true});
+  document.addEventListener('pointerout',(e)=>{ const el=e.target.closest && e.target.closest('.bk'); if(el && (!e.relatedTarget || !el.contains(e.relatedTarget))) el.style.transform=''; },{passive:true});
+  size(); addEventListener('resize',size,{passive:true}); if(!reduced) draw();
+})();
+</script>
+</body>
+</html>
